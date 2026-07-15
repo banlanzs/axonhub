@@ -102,6 +102,30 @@ make build
 make build-backend
 ```
 
+### 本地构建版本号
+
+本地 `make build` / `make build-backend` 会在每次构建时自动注入版本号：
+
+1. 通过 GitHub 魔法链接 `https://github.com/looplj/axonhub/releases/latest` 跟随 HTTP 重定向，解析最新 release tag（例如 `v1.0.0-beta5`）。
+2. 使用 `go build -ldflags "-X github.com/looplj/axonhub/internal/build.Version=<tag>"` 写入二进制。
+3. 不使用 `api.github.com`，避免未认证请求的速率限制。
+4. 若网络不可用或解析失败，回退到仓库内嵌的 `internal/build/VERSION`，并打印 warning。
+
+常用覆盖方式：
+
+```bash
+# 手动指定版本
+make build-backend VERSION=v1.2.3
+
+# 如需更换 release 源仓库（默认已是 origin 仓库）
+make build-backend GITHUB_REPO_URL=https://github.com/looplj/axonhub
+```
+
+说明：
+
+- 该逻辑主要用于本地开发构建；正式 release / Docker 发布仍由 CI（如 goreleaser、workflow 写 `VERSION`）负责。
+- 本地构建默认只注入 `Version`，不会额外注入 `Commit` / `BuildTime`。
+
 ### 仅构建前端
 
 ```bash

@@ -102,6 +102,30 @@ This will build both backend and frontend, and embed frontend assets into the ba
 make build-backend
 ```
 
+### Local Build Version
+
+Local `make build` / `make build-backend` injects a version on every build:
+
+1. Follow the GitHub magic link `https://github.com/looplj/axonhub/releases/latest` (HTTP redirect) and parse the latest release tag (for example `v1.0.0-beta5`).
+2. Inject it with `go build -ldflags "-X github.com/looplj/axonhub/internal/build.Version=<tag>"`.
+3. Do **not** use `api.github.com`, which has strict unauthenticated rate limits.
+4. If the network request fails, fall back to the embedded `internal/build/VERSION` file and print a warning.
+
+Common overrides:
+
+```bash
+# Pin a version manually
+make build-backend VERSION=v1.2.3
+
+# Change the release source repo if needed (defaults to the origin repo)
+make build-backend GITHUB_REPO_URL=https://github.com/looplj/axonhub
+```
+
+Notes:
+
+- This is for local development builds. Official release / Docker publishes still use CI (for example goreleaser or workflows that write `VERSION`).
+- Local builds inject only `Version` by default; `Commit` / `BuildTime` are not set.
+
 ### Build Frontend Only
 
 ```bash

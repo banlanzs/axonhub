@@ -17,10 +17,28 @@ generate-openapi:
 	cd internal/server/gql/openapi && go generate
 	@echo "Generation completed!"
 
+# Latest release version for local builds.
+# Prefer GitHub "releases/latest" magic link (HTTP redirect to /releases/tag/<tag>),
+# not api.github.com (unauthenticated rate limit).
+# Override: make build-backend VERSION=v1.2.3
+GITHUB_REPO_URL ?= https://github.com/looplj/axonhub
+VERSION ?=
+
 # Build the backend application
 build-backend:
 	@echo "Building axonhub backend..."
-	go build -ldflags "-s -w" -tags=nomsgpack -o axonhub ./cmd/axonhub
+	@VERSION="$(VERSION)"; \
+	if [ -z "$$VERSION" ]; then \
+		VERSION=$$(curl -fsSL -o /dev/null -w '%{url_effective}' "$(GITHUB_REPO_URL)/releases/latest" 2>/dev/null | sed 's|.*/||'); \
+	fi; \
+	if [ -n "$$VERSION" ]; then \
+		echo "Using version: $$VERSION"; \
+		LDFLAGS="-s -w -X github.com/looplj/axonhub/internal/build.Version=$$VERSION"; \
+	else \
+		echo "Warning: failed to fetch latest release version, falling back to embedded VERSION file"; \
+		LDFLAGS="-s -w"; \
+	fi; \
+	go build -ldflags "$$LDFLAGS" -tags=nomsgpack -o axonhub ./cmd/axonhub
 	@echo "Backend build completed!"
 
 # Build the frontend application

@@ -135,6 +135,8 @@ internal/server/static/dist/*
 *.b64
 coverage.out
 *.test
+*.exe
+/bin/
 *.backup
 
 .playwright-cli/
