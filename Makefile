@@ -24,9 +24,19 @@ generate-openapi:
 GITHUB_REPO_URL ?= https://github.com/looplj/axonhub
 VERSION ?=
 
+# Native Windows make runs recipes via cmd.exe (not bash). Keep POSIX recipes for CI/Linux/macOS.
+ifeq ($(OS),Windows_NT)
+BINARY_NAME := axonhub.exe
+else
+BINARY_NAME := axonhub
+endif
+
 # Build the backend application
 build-backend:
 	@echo "Building axonhub backend..."
+ifeq ($(OS),Windows_NT)
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-backend.ps1 -Version "$(VERSION)" -RepoUrl "$(GITHUB_REPO_URL)" -Output "$(BINARY_NAME)"
+else
 	@VERSION="$(VERSION)"; \
 	if [ -z "$$VERSION" ]; then \
 		VERSION=$$(curl -fsSL -o /dev/null -w '%{url_effective}' "$(GITHUB_REPO_URL)/releases/latest" 2>/dev/null | sed 's|.*/||'); \
@@ -38,17 +48,24 @@ build-backend:
 		echo "Warning: failed to fetch latest release version, falling back to embedded VERSION file"; \
 		LDFLAGS="-s -w"; \
 	fi; \
-	go build -ldflags "$$LDFLAGS" -tags=nomsgpack -o axonhub ./cmd/axonhub
+	go build -ldflags "$$LDFLAGS" -tags=nomsgpack -o $(BINARY_NAME) ./cmd/axonhub
+endif
 	@echo "Backend build completed!"
 
 # Build the frontend application
+# On Windows, native make uses CreateProcess and cannot find Unix rm/mkdir/cp.
+# Use PowerShell there; keep POSIX commands for Linux/macOS/Git Bash-friendly CI.
 build-frontend:
 	@echo "Building axonhub frontend..."
 	cd frontend && pnpm vite build
 	@echo "Copying frontend dist to server static directory..."
+ifeq ($(OS),Windows_NT)
+	powershell -NoProfile -Command "if (Test-Path 'internal/server/static/dist/assets') { Remove-Item -Recurse -Force 'internal/server/static/dist/assets' }; New-Item -ItemType Directory -Force -Path 'internal/server/static/dist' | Out-Null; Copy-Item -Recurse -Force 'frontend/dist/*' 'internal/server/static/dist/'"
+else
 	rm -rf internal/server/static/dist/assets
 	mkdir -p internal/server/static/dist
 	cp -r frontend/dist/* internal/server/static/dist/
+endif
 	@echo "Frontend build completed!"
 
 # Build both frontend and backend
