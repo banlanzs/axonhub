@@ -154,6 +154,67 @@ func TestInboundTransformer_TransformRequest(t *testing.T) {
 			},
 		},
 		{
+			name: "request with namespace tools",
+			httpReq: &httpclient.Request{
+				Body: []byte(`{
+					"model": "gpt-4o",
+					"input": "List the projects.",
+					"tools": [
+						{
+							"type": "namespace",
+							"name": "mcp__codebase_memory_mcp",
+							"tools": [
+								{
+									"type": "function",
+									"name": "list_projects",
+									"description": "List stored projects",
+									"parameters": {
+										"type": "object",
+										"properties": {}
+									},
+									"strict": true
+								},
+								{
+									"type": "function",
+									"name": "get_project",
+									"description": "Get a stored project",
+									"parameters": {
+										"type": "object",
+										"properties": {"id": {"type": "string"}},
+										"required": ["id"]
+									}
+								},
+								{
+									"type": "web_search",
+									"name": "unsupported_nested_tool"
+								}
+							]
+						},
+						{
+							"type": "function",
+							"name": "get_weather",
+							"parameters": {"type": "object", "properties": {}}
+						}
+					]
+				}`),
+			},
+			expectError: false,
+			validate: func(t *testing.T, result *llm.Request) {
+				require.Len(t, result.Tools, 3)
+
+				namespaceTool := result.Tools[0]
+				require.Equal(t, "function", namespaceTool.Type)
+				require.Equal(t, "mcp__codebase_memory_mcp__list_projects", namespaceTool.Function.Name)
+				require.Equal(t, "List stored projects", namespaceTool.Function.Description)
+				require.JSONEq(t, `{"type":"object","properties":{}}`, string(namespaceTool.Function.Parameters))
+				require.NotNil(t, namespaceTool.Function.Strict)
+				require.True(t, *namespaceTool.Function.Strict)
+
+				require.Equal(t, "mcp__codebase_memory_mcp__get_project", result.Tools[1].Function.Name)
+				require.Equal(t, "get_weather", result.Tools[2].Function.Name)
+			},
+		},
+		{
 			name: "captures responses provider raw tools and tool choice",
 			httpReq: &httpclient.Request{
 				Body: []byte(`{
@@ -1609,6 +1670,43 @@ func TestConvertReasoningWithFollowing(t *testing.T) {
 			},
 		},
 		{
+			name: "consecutive reasoning items merged with function_call",
+			items: []Item{
+				{
+					ID:               "rs_first",
+					Type:             "reasoning",
+					Summary:          []ReasoningSummary{{Type: "summary_text", Text: "first"}},
+					EncryptedContent: lo.ToPtr("gAAAA_FIRST_BLOB"),
+				},
+				{
+					ID:               "rs_second",
+					Type:             "reasoning",
+					Summary:          []ReasoningSummary{{Type: "summary_text", Text: "second"}},
+					EncryptedContent: lo.ToPtr("gAAAA_SECOND_BLOB"),
+				},
+				{
+					Type:      "function_call",
+					CallID:    "call_123",
+					Name:      "get_weather",
+					Arguments: `{}`,
+				},
+			},
+			startIdx: 0,
+			validate: func(t *testing.T, result *llm.Message, consumed int, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, 3, consumed)
+				require.Equal(t, []llm.ReasoningItem{
+					{ID: "rs_first", Content: "first", Signature: "gAAAA_FIRST_BLOB"},
+					{ID: "rs_second", Content: "second", Signature: "gAAAA_SECOND_BLOB"},
+				}, result.ReasoningItems)
+				require.Equal(t, "firstsecond", lo.FromPtr(result.ReasoningContent))
+				require.Equal(t, "gAAAA_SECOND_BLOB", lo.FromPtr(result.ReasoningSignature))
+				require.Len(t, result.ToolCalls, 1)
+				require.Equal(t, "call_123", result.ToolCalls[0].ID)
+			},
+		},
+		{
 			name: "reasoning merged with assistant text message",
 			items: []Item{
 				{
@@ -1696,6 +1794,16 @@ func TestConvertReasoningWithFollowing(t *testing.T) {
 			tt.validate(t, result, consumed, err)
 		})
 	}
+}
+
+func TestBuildReasoningItems_OmitsEmptyEncryptedContent(t *testing.T) {
+	items := buildReasoningItems(llm.Message{
+		ReasoningItems: []llm.ReasoningItem{{ID: "rs_summary", Content: "summary only"}},
+	})
+
+	require.Len(t, items, 1)
+	require.Equal(t, "rs_summary", items[0].ID)
+	require.Nil(t, items[0].EncryptedContent)
 }
 
 func TestInboundTransformer_TransformRequest_WithReasoningInput(t *testing.T) {
@@ -1832,6 +1940,47 @@ func TestConvertToResponsesAPIResponse_AttachesAnnotationsToFirstTextItem(t *tes
 	require.Equal(t, "url_citation", resp.Output[0].Content.Items[0].Annotations[0].Type)
 	require.NotNil(t, resp.Output[0].Content.Items[0].Annotations[0].URLCitation)
 	require.Equal(t, "https://example.com", resp.Output[0].Content.Items[0].Annotations[0].URLCitation.URL)
+}
+
+func TestConvertToResponsesAPIResponse_PreservesMultipleReasoningItems(t *testing.T) {
+	resp := convertToResponsesAPIResponse(&llm.Response{
+		ID:      "resp_reasoning_items",
+		Model:   "gpt-5",
+		Created: 1,
+		Choices: []llm.Choice{{
+			Message: &llm.Message{
+				Role: "assistant",
+				ReasoningItems: []llm.ReasoningItem{
+					{ID: "rs_first", Content: "first", Signature: "gAAAA_FIRST_BLOB"},
+					{ID: "rs_second", Content: "second", Signature: "gAAAA_SECOND_BLOB"},
+				},
+				ToolCalls: []llm.ToolCall{{
+					ID:   "call_tool",
+					Type: "function",
+					Function: llm.FunctionCall{
+						Name:      "lookup",
+						Arguments: "{}",
+					},
+				}},
+			},
+		}},
+	})
+
+	require.Len(t, resp.Output, 3)
+	require.Equal(t, "reasoning", resp.Output[0].Type)
+	require.Equal(t, "rs_first", resp.Output[0].ID)
+	require.Len(t, resp.Output[0].Summary, 1)
+	require.Equal(t, "first", resp.Output[0].Summary[0].Text)
+	require.NotNil(t, resp.Output[0].EncryptedContent)
+	require.Equal(t, "gAAAA_FIRST_BLOB", *resp.Output[0].EncryptedContent)
+
+	require.Equal(t, "reasoning", resp.Output[1].Type)
+	require.Equal(t, "rs_second", resp.Output[1].ID)
+	require.Len(t, resp.Output[1].Summary, 1)
+	require.Equal(t, "second", resp.Output[1].Summary[0].Text)
+	require.NotNil(t, resp.Output[1].EncryptedContent)
+	require.Equal(t, "gAAAA_SECOND_BLOB", *resp.Output[1].EncryptedContent)
+	require.Equal(t, "function_call", resp.Output[2].Type)
 }
 
 func TestInboundTransformer_TransformResponse_WithReasoningContent(t *testing.T) {

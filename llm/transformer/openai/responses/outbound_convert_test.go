@@ -780,6 +780,21 @@ func TestConvertReasoning(t *testing.T) {
 				Summary: "concise",
 			},
 		},
+		{
+			name: "with only responses reasoning context",
+			req: &llm.Request{
+				ProviderExtensions: &llm.ProviderExtensions{
+					OpenAIResponses: &llm.OpenAIResponsesProviderExtensions{
+						Request: &llm.OpenAIResponsesRequestExtensions{
+							ReasoningContext: "all_turns",
+						},
+					},
+				},
+			},
+			expected: &Reasoning{
+				Context: "all_turns",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -996,6 +1011,19 @@ func TestConvertOutputToMessage(t *testing.T) {
 				require.Equal(t, "Thinking step", *msg.ReasoningContent)
 				require.NotNil(t, msg.ReasoningSignature)
 				require.Equal(t, "encrypted_data", *msg.ReasoningSignature)
+			},
+		},
+		{
+			name: "multiple reasoning outputs preserve item summaries",
+			output: []Item{
+				{ID: "rs_first", Type: "reasoning", Summary: []ReasoningSummary{{Type: "summary_text", Text: "first"}}, EncryptedContent: lo.ToPtr("gAAAA_FIRST_BLOB")},
+				{ID: "rs_second", Type: "reasoning", Summary: []ReasoningSummary{{Type: "summary_text", Text: "second"}}, EncryptedContent: lo.ToPtr("gAAAA_SECOND_BLOB")},
+			},
+			validate: func(t *testing.T, msg llm.Message) {
+				require.Equal(t, []llm.ReasoningItem{
+					{ID: "rs_first", Content: "first", Signature: "gAAAA_FIRST_BLOB"},
+					{ID: "rs_second", Content: "second", Signature: "gAAAA_SECOND_BLOB"},
+				}, msg.ReasoningItems)
 			},
 		},
 		{
@@ -1407,4 +1435,31 @@ func TestConvertAssistantMessage_WithCompactContent(t *testing.T) {
 			tt.validate(t, result)
 		})
 	}
+}
+
+func TestConvertAssistantMessage_PreservesMultipleReasoningSignaturesBeforeToolCall(t *testing.T) {
+	items := convertAssistantMessage(llm.Message{
+		Role: "assistant",
+		ReasoningItems: []llm.ReasoningItem{
+			{Content: "first", Signature: "gAAAA_FIRST_BLOB"},
+			{Content: "second", Signature: "gAAAA_SECOND_BLOB"},
+		},
+		ToolCalls: []llm.ToolCall{{
+			ID:   "call_task",
+			Type: "function",
+			Function: llm.FunctionCall{
+				Name:      "TaskOutput",
+				Arguments: `{"task_id":"task_1","block":true}`,
+			},
+		}},
+	})
+
+	require.Len(t, items, 3)
+	require.Equal(t, "reasoning", items[0].Type)
+	require.Equal(t, "gAAAA_FIRST_BLOB", *items[0].EncryptedContent)
+	require.Equal(t, []ReasoningSummary{{Type: "summary_text", Text: "first"}}, items[0].Summary)
+	require.Equal(t, "reasoning", items[1].Type)
+	require.Equal(t, "gAAAA_SECOND_BLOB", *items[1].EncryptedContent)
+	require.Equal(t, []ReasoningSummary{{Type: "summary_text", Text: "second"}}, items[1].Summary)
+	require.Equal(t, "function_call", items[2].Type)
 }
