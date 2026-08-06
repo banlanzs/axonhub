@@ -155,16 +155,16 @@ func buildChannel(c *ent.Channel, httpClient *httpclient.HttpClient) *Channel {
 // buildChannelWithTransformer should validate channel credentials before constructing transformers.
 func getAPIKeyProvider(ch *Channel) auth.APIKeyProvider {
 	if ch.apiKeyOverride != "" {
-		return auth.NewStaticKeyProvider(ch.apiKeyOverride)
+		return NewChannelAPIKeyContextProvider(auth.NewStaticKeyProvider(ch.apiKeyOverride))
 	}
 
 	enabled := ch.cachedEnabledAPIKeys
 	if len(enabled) > 1 {
-		return NewTraceStickyKeyProvider(ch)
+		return NewChannelAPIKeyContextProvider(NewTraceStickyKeyProvider(ch))
 	}
 
 	if len(enabled) == 1 {
-		return auth.NewStaticKeyProvider(enabled[0])
+		return NewChannelAPIKeyContextProvider(auth.NewStaticKeyProvider(enabled[0]))
 	}
 
 	panic(fmt.Errorf("no enabled api key configured for channel %s", ch.Name))
@@ -982,7 +982,7 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel, apiKeyOve
 	case channel.TypeOpenai, channel.TypeAtlascloud, channel.TypeDeepinfra, channel.TypeQiniu, channel.TypeMinimax,
 		channel.TypePpio, channel.TypeSiliconflow,
 		channel.TypeVercel, channel.TypeAihubmix, channel.TypeBurncloud, channel.TypeGithub,
-		channel.TypeOpencodeGo, channel.TypeEvolink:
+		channel.TypeOpencodeGo, channel.TypeEvolink, channel.TypeGroq:
 		var reasoningEffortMapping []llm.ReasoningEffortMapping
 		if c.Settings != nil {
 			reasoningEffortMapping = c.Settings.TransformOptions.ReasoningEffortMapping
