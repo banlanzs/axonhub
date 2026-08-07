@@ -141,8 +141,10 @@ func NewGraphqlHandlers(deps Dependencies) *GraphqlHandler {
 		// TestChannel performs long-running parallel provider requests whose database
 		// operations do not require one transaction. BulkImportChannels manages one
 		// transaction per row to preserve its partial-success behavior.
+		// Read-only queries do not need a transaction either; skipping them prevents
+		// SQLite single-writer contention with concurrent streaming writes.
 		SkipTxFunc: func(op *ast.OperationDefinition) bool {
-			return skipTestChannelTransaction(op) || skipBulkImportTransaction(op)
+			return skipTestChannelTransaction(op) || skipBulkImportTransaction(op) || op.Operation == ast.Query
 		},
 	})
 
