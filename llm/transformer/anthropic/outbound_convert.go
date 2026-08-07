@@ -45,7 +45,7 @@ func ensureAssistantThinkingBlocks(messages []MessageParam) {
 			continue
 		}
 
-		emptyThinking := ""
+		emptyThinking := "\n"
 		thinkingBlock := MessageContentBlock{
 			Type:     "thinking",
 			Thinking: &emptyThinking,
@@ -161,8 +161,10 @@ func buildBaseRequest(chatReq *llm.Request, config *Config) *MessageRequest {
 		}
 	}
 
-	// Restore output_config from TransformerMetadata
-	if chatReq.TransformerMetadata != nil {
+	// Restore output_config from TransformerMetadata. Skipped when thinking is
+	// disabled (e.g. Claude Code sub-agent requests): providers like DeepSeek reject
+	// thinking.type=disabled combined with output_config.
+	if chatReq.TransformerMetadata != nil && !(req.Thinking != nil && req.Thinking.Type == "disabled") {
 		if effort, ok := chatReq.TransformerMetadata[TransformerMetadataKeyOutputConfigEffort].(string); ok && effort != "" {
 			if supportsOutputConfig(config) {
 				req.OutputConfig = &OutputConfig{Effort: effort}

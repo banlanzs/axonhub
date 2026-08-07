@@ -1268,7 +1268,7 @@ func TestEnsureAssistantThinkingBlocks_SimpleContent(t *testing.T) {
 	require.Nil(t, msgs[0].Content.Content)
 	require.Len(t, msgs[0].Content.MultipleContent, 2)
 	require.Equal(t, "thinking", msgs[0].Content.MultipleContent[0].Type)
-	require.Equal(t, "", *msgs[0].Content.MultipleContent[0].Thinking)
+	require.Equal(t, "\n", *msgs[0].Content.MultipleContent[0].Thinking)
 	require.Equal(t, "text", msgs[0].Content.MultipleContent[1].Type)
 	require.Equal(t, "Hello", *msgs[0].Content.MultipleContent[1].Text)
 }
@@ -1305,7 +1305,7 @@ func TestEnsureAssistantThinkingBlocks_MultipleContentWithoutThinking(t *testing
 	ensureAssistantThinkingBlocks(msgs)
 	require.Len(t, msgs[0].Content.MultipleContent, 3)
 	require.Equal(t, "thinking", msgs[0].Content.MultipleContent[0].Type)
-	require.Equal(t, "", *msgs[0].Content.MultipleContent[0].Thinking)
+	require.Equal(t, "\n", *msgs[0].Content.MultipleContent[0].Thinking)
 	require.Equal(t, "text", msgs[0].Content.MultipleContent[1].Type)
 	require.Equal(t, "tool_use", msgs[0].Content.MultipleContent[2].Type)
 }
@@ -1329,7 +1329,7 @@ func TestEnsureAssistantThinkingBlocks_EmptyContent(t *testing.T) {
 	ensureAssistantThinkingBlocks(msgs)
 	require.Len(t, msgs[0].Content.MultipleContent, 1)
 	require.Equal(t, "thinking", msgs[0].Content.MultipleContent[0].Type)
-	require.Equal(t, "", *msgs[0].Content.MultipleContent[0].Thinking)
+	require.Equal(t, "\n", *msgs[0].Content.MultipleContent[0].Thinking)
 }
 
 func TestIsThinkingEnabled(t *testing.T) {
@@ -1376,7 +1376,7 @@ func TestDeepSeek_EnsureThinkingBlocksInAssistantMessages(t *testing.T) {
 				require.Nil(t, assistantMsg.Content.Content)
 				require.Len(t, assistantMsg.Content.MultipleContent, 2)
 				require.Equal(t, "thinking", assistantMsg.Content.MultipleContent[0].Type)
-				require.Equal(t, "", *assistantMsg.Content.MultipleContent[0].Thinking)
+				require.Equal(t, "\n", *assistantMsg.Content.MultipleContent[0].Thinking)
 				require.Equal(t, "text", assistantMsg.Content.MultipleContent[1].Type)
 				require.Equal(t, "Hello!", *assistantMsg.Content.MultipleContent[1].Text)
 			},
@@ -1448,7 +1448,7 @@ func TestDeepSeek_EnsureThinkingBlocksInAssistantMessages(t *testing.T) {
 				assistantMsg := req.Messages[1]
 				require.Len(t, assistantMsg.Content.MultipleContent, 2)
 				require.Equal(t, "thinking", assistantMsg.Content.MultipleContent[0].Type)
-				require.Equal(t, "", *assistantMsg.Content.MultipleContent[0].Thinking)
+				require.Equal(t, "\n", *assistantMsg.Content.MultipleContent[0].Thinking)
 				require.Equal(t, "text", assistantMsg.Content.MultipleContent[1].Type)
 				require.Equal(t, "Hello!", *assistantMsg.Content.MultipleContent[1].Text)
 			},
