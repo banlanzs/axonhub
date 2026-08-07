@@ -1288,6 +1288,44 @@ func (s *RequestService) LoadResponseChunks(ctx context.Context, req *ent.Reques
 	return chunks, nil
 }
 
+// ResponseChunkPage is a single page of response chunks for a request.
+type ResponseChunkPage struct {
+	Items      []objects.JSONRawMessage `json:"items"`
+	TotalCount int                      `json:"totalCount"`
+	HasMore    bool                     `json:"hasMore"`
+}
+
+// LoadResponseChunksPaginated returns one page of the request response chunks,
+// loading the full array from external storage when necessary and slicing it.
+// The full array must still be unmarshalled (stored as a single JSON array),
+// but only the requested window is returned to the client.
+func (s *RequestService) LoadResponseChunksPaginated(ctx context.Context, requestID int, first, offset int) (*ResponseChunkPage, error) {
+	req, err := s.entFromContext(ctx).Request.Get(ctx, requestID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get request: %w", err)
+	}
+
+	chunks, err := s.LoadResponseChunks(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	total := len(chunks)
+	if offset > total {
+		offset = total
+	}
+	end := offset + first
+	if end > total {
+		end = total
+	}
+
+	return &ResponseChunkPage{
+		Items:      chunks[offset:end],
+		TotalCount: total,
+		HasMore:    end < total,
+	}, nil
+}
+
 // LoadRequestExecutionRequestBody returns the execution request body, loading from external storage when necessary.
 func (s *RequestService) LoadRequestExecutionRequestBody(ctx context.Context, exec *ent.RequestExecution) (objects.JSONRawMessage, error) {
 	if exec == nil {

@@ -1386,6 +1386,7 @@ type ComplexityRoot struct {
 		QueryModels                     func(childComplexity int, input QueryModelsInput) int
 		QueryUnassociatedChannels       func(childComplexity int) int
 		QuotaEnforcementSettings        func(childComplexity int) int
+		RequestResponseChunks           func(childComplexity int, requestID objects.GUID, first int, offset int) int
 		RequestStats                    func(childComplexity int) int
 		RequestStatsByAPIKey            func(childComplexity int, timeWindow *string) int
 		RequestStatsByChannel           func(childComplexity int, timeWindow *string) int
@@ -1549,6 +1550,12 @@ type ComplexityRoot struct {
 	RequestStatsByModel struct {
 		Count   func(childComplexity int) int
 		ModelID func(childComplexity int) int
+	}
+
+	ResponseChunkPage struct {
+		HasMore    func(childComplexity int) int
+		Items      func(childComplexity int) int
+		TotalCount func(childComplexity int) int
 	}
 
 	RestorePayload struct {
@@ -2402,6 +2409,7 @@ type QueryResolver interface {
 	AnalyticsOverview(ctx context.Context, filter *AnalyticsFilter) (*AnalyticsOverview, error)
 	AnalyticsDailyStats(ctx context.Context, filter *AnalyticsFilter) ([]*AnalyticsDailyStat, error)
 	AnalyticsDimensionStats(ctx context.Context, filter *AnalyticsFilter, dimension string) ([]*AnalyticsDimensionStat, error)
+	RequestResponseChunks(ctx context.Context, requestID objects.GUID, first int, offset int) (*biz.ResponseChunkPage, error)
 }
 type RequestResolver interface {
 	ID(ctx context.Context, obj *ent.Request) (*objects.GUID, error)
@@ -8431,6 +8439,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.QuotaEnforcementSettings(childComplexity), true
+	case "Query.requestResponseChunks":
+		if e.complexity.Query.RequestResponseChunks == nil {
+			break
+		}
+
+		args, err := ec.field_Query_requestResponseChunks_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.RequestResponseChunks(childComplexity, args["requestID"].(objects.GUID), args["first"].(int), args["offset"].(int)), true
 	case "Query.requestStats":
 		if e.complexity.Query.RequestStats == nil {
 			break
@@ -9251,6 +9270,25 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.RequestStatsByModel.ModelID(childComplexity), true
+
+	case "ResponseChunkPage.hasMore":
+		if e.complexity.ResponseChunkPage.HasMore == nil {
+			break
+		}
+
+		return e.complexity.ResponseChunkPage.HasMore(childComplexity), true
+	case "ResponseChunkPage.items":
+		if e.complexity.ResponseChunkPage.Items == nil {
+			break
+		}
+
+		return e.complexity.ResponseChunkPage.Items(childComplexity), true
+	case "ResponseChunkPage.totalCount":
+		if e.complexity.ResponseChunkPage.TotalCount == nil {
+			break
+		}
+
+		return e.complexity.ResponseChunkPage.TotalCount(childComplexity), true
 
 	case "RestorePayload.message":
 		if e.complexity.RestorePayload.Message == nil {
@@ -11727,7 +11765,7 @@ func (ec *executionContext) introspectType(name string) (*introspection.Type, er
 	return introspection.WrapTypeFromDef(ec.Schema(), ec.Schema().Types[name]), nil
 }
 
-//go:embed "axonhub.graphql" "ent.graphql" "dashboard.graphql" "scopes.graphql" "me.graphql" "system.graphql" "filter.graphql" "model.graphql" "backup.graphql" "channel_probe.graphql" "prompt.graphql" "prompt_protection_rule.graphql" "price.graphql" "cost.graphql" "analytics.graphql"
+//go:embed "axonhub.graphql" "ent.graphql" "dashboard.graphql" "scopes.graphql" "me.graphql" "system.graphql" "filter.graphql" "model.graphql" "backup.graphql" "channel_probe.graphql" "prompt.graphql" "prompt_protection_rule.graphql" "price.graphql" "cost.graphql" "analytics.graphql" "request.graphql"
 var sourcesFS embed.FS
 
 func sourceData(filename string) string {
@@ -11754,6 +11792,7 @@ var sources = []*ast.Source{
 	{Name: "price.graphql", Input: sourceData("price.graphql"), BuiltIn: false},
 	{Name: "cost.graphql", Input: sourceData("cost.graphql"), BuiltIn: false},
 	{Name: "analytics.graphql", Input: sourceData("analytics.graphql"), BuiltIn: false},
+	{Name: "request.graphql", Input: sourceData("request.graphql"), BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
 
@@ -14417,6 +14456,27 @@ func (ec *executionContext) field_Query_queryModels_args(ctx context.Context, ra
 		return nil, err
 	}
 	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_requestResponseChunks_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "requestID", ec.unmarshalNID2githubᚗcomᚋloopljᚋaxonhubᚋinternalᚋobjectsᚐGUID)
+	if err != nil {
+		return nil, err
+	}
+	args["requestID"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "first", ec.unmarshalNInt2int)
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "offset", ec.unmarshalNInt2int)
+	if err != nil {
+		return nil, err
+	}
+	args["offset"] = arg2
 	return args, nil
 }
 
@@ -46561,6 +46621,55 @@ func (ec *executionContext) fieldContext_Query_analyticsDimensionStats(ctx conte
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_requestResponseChunks(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_requestResponseChunks,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().RequestResponseChunks(ctx, fc.Args["requestID"].(objects.GUID), fc.Args["first"].(int), fc.Args["offset"].(int))
+		},
+		nil,
+		ec.marshalNResponseChunkPage2ᚖgithubᚗcomᚋloopljᚋaxonhubᚋinternalᚋserverᚋbizᚐResponseChunkPage,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_requestResponseChunks(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "items":
+				return ec.fieldContext_ResponseChunkPage_items(ctx, field)
+			case "totalCount":
+				return ec.fieldContext_ResponseChunkPage_totalCount(ctx, field)
+			case "hasMore":
+				return ec.fieldContext_ResponseChunkPage_hasMore(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ResponseChunkPage", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_requestResponseChunks_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -49909,6 +50018,93 @@ func (ec *executionContext) fieldContext_RequestStatsByModel_count(_ context.Con
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ResponseChunkPage_items(ctx context.Context, field graphql.CollectedField, obj *biz.ResponseChunkPage) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ResponseChunkPage_items,
+		func(ctx context.Context) (any, error) {
+			return obj.Items, nil
+		},
+		nil,
+		ec.marshalNJSONRawMessage2ᚕgithubᚗcomᚋloopljᚋaxonhubᚋinternalᚋobjectsᚐJSONRawMessageᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ResponseChunkPage_items(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ResponseChunkPage",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type JSONRawMessage does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ResponseChunkPage_totalCount(ctx context.Context, field graphql.CollectedField, obj *biz.ResponseChunkPage) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ResponseChunkPage_totalCount,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ResponseChunkPage_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ResponseChunkPage",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ResponseChunkPage_hasMore(ctx context.Context, field graphql.CollectedField, obj *biz.ResponseChunkPage) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ResponseChunkPage_hasMore,
+		func(ctx context.Context) (any, error) {
+			return obj.HasMore, nil
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ResponseChunkPage_hasMore(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ResponseChunkPage",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
 		},
 	}
 	return fc, nil
@@ -101591,6 +101787,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "requestResponseChunks":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_requestResponseChunks(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
@@ -103211,6 +103429,55 @@ func (ec *executionContext) _RequestStatsByModel(ctx context.Context, sel ast.Se
 			}
 		case "count":
 			out.Values[i] = ec._RequestStatsByModel_count(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var responseChunkPageImplementors = []string{"ResponseChunkPage"}
+
+func (ec *executionContext) _ResponseChunkPage(ctx context.Context, sel ast.SelectionSet, obj *biz.ResponseChunkPage) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, responseChunkPageImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ResponseChunkPage")
+		case "items":
+			out.Values[i] = ec._ResponseChunkPage_items(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._ResponseChunkPage_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "hasMore":
+			out.Values[i] = ec._ResponseChunkPage_hasMore(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -111758,6 +112025,36 @@ func (ec *executionContext) marshalNJSONRawMessage2githubᚗcomᚋloopljᚋaxonh
 	return v
 }
 
+func (ec *executionContext) unmarshalNJSONRawMessage2ᚕgithubᚗcomᚋloopljᚋaxonhubᚋinternalᚋobjectsᚐJSONRawMessageᚄ(ctx context.Context, v any) ([]objects.JSONRawMessage, error) {
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]objects.JSONRawMessage, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNJSONRawMessage2githubᚗcomᚋloopljᚋaxonhubᚋinternalᚋobjectsᚐJSONRawMessage(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNJSONRawMessage2ᚕgithubᚗcomᚋloopljᚋaxonhubᚋinternalᚋobjectsᚐJSONRawMessageᚄ(ctx context.Context, sel ast.SelectionSet, v []objects.JSONRawMessage) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNJSONRawMessage2githubᚗcomᚋloopljᚋaxonhubᚋinternalᚋobjectsᚐJSONRawMessage(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalNJSONRawMessageInput2githubᚗcomᚋloopljᚋaxonhubᚋinternalᚋobjectsᚐJSONRawMessage(ctx context.Context, v any) (objects.JSONRawMessage, error) {
 	var res objects.JSONRawMessage
 	err := res.UnmarshalGQL(v)
@@ -113768,6 +114065,20 @@ func (ec *executionContext) marshalNRequestStatus2githubᚗcomᚋloopljᚋaxonhu
 func (ec *executionContext) unmarshalNRequestWhereInput2ᚖgithubᚗcomᚋloopljᚋaxonhubᚋinternalᚋentᚐRequestWhereInput(ctx context.Context, v any) (*ent.RequestWhereInput, error) {
 	res, err := ec.unmarshalInputRequestWhereInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNResponseChunkPage2githubᚗcomᚋloopljᚋaxonhubᚋinternalᚋserverᚋbizᚐResponseChunkPage(ctx context.Context, sel ast.SelectionSet, v biz.ResponseChunkPage) graphql.Marshaler {
+	return ec._ResponseChunkPage(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNResponseChunkPage2ᚖgithubᚗcomᚋloopljᚋaxonhubᚋinternalᚋserverᚋbizᚐResponseChunkPage(ctx context.Context, sel ast.SelectionSet, v *biz.ResponseChunkPage) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ResponseChunkPage(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNRestoreOptionsInput2githubᚗcomᚋloopljᚋaxonhubᚋinternalᚋserverᚋbackupᚐRestoreOptions(ctx context.Context, v any) (backup.RestoreOptions, error) {

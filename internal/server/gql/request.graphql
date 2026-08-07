@@ -1,0 +1,14 @@
+
+# Request response chunks paginated access.
+# Full responseChunks arrays can be several MB; the detail page must not
+# fetch them all at once. This query returns a single page of chunks.
+
+type ResponseChunkPage {
+  items: [JSONRawMessage!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+extend type Query {
+  requestResponseChunks(requestID: ID!, first: Int!, offset: Int!): ResponseChunkPage!
+}

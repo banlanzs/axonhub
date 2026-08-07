@@ -80,7 +80,7 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
   const hasPreviewData = !!(parsedResponse.content || parsedResponse.reasoning || parsedResponse.toolCalls.length > 0);
   const isLive = isPreviewStreaming || !!(request?.status === 'processing' && request?.stream);
   const hasResponseBody = !!(request?.responseBody && Object.keys(request.responseBody).length > 0);
-  const hasResponseChunks = !!(request?.responseChunks && request.responseChunks.length > 0);
+  const hasResponseChunks = !!(request?.stream && request?.contentSaved !== false);
 
   const extractResponseText = useCallback(() => {
     if (!request) return '';
@@ -259,8 +259,7 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
   }, [isSpeechRequest, hasStoredContent, request?.id]);
 
   const showResponseChunksModal = useCallback(() => {
-    if (request?.responseChunks) {
-      setSelectedResponseChunks(request.responseChunks);
+    if (request?.stream) {
       setShowResponseChunks(true);
     }
   }, [request]);
@@ -919,7 +918,7 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
       <ChunksDialog
         open={showResponseChunks}
         onOpenChange={setShowResponseChunks}
-        chunks={request?.responseChunks ?? []}
+        requestId={request?.id}
         isLive={request?.stream === true && request?.status === 'processing'}
         title={t('requests.dialogs.jsonViewer.responseChunks')}
       />

@@ -146,7 +146,6 @@ function buildRequestDetailQuery(permissions: { canViewApiKeys: boolean; canView
           requestHeaders
           requestBody
           responseBody
-          responseChunks
           status
           format
           metricsReasoningDurationMs
@@ -245,7 +244,6 @@ function buildRequestExecutionsQuery(permissions: { canViewChannels: boolean }) 
                 requestHeaders
                 requestBody
                 responseBody
-                responseChunks
                 errorMessage
                 responseStatusCode
                 status
@@ -383,7 +381,6 @@ export function useRequest(
           requestHeaders: previousRequest?.requestHeaders,
           requestBody: previousRequest?.requestBody,
           responseBody: previousRequest?.responseBody,
-          responseChunks: previousRequest?.responseChunks,
           usageLogs: previousRequest?.usageLogs,
         });
       } catch (error) {
@@ -468,5 +465,46 @@ export function useRequestExecutions(
       }
     },
     enabled: !!requestID,
+  });
+}
+
+const GET_REQUEST_RESPONSE_CHUNKS = `
+  query GetRequestResponseChunks($requestID: ID!, $first: Int!, $offset: Int!) {
+    requestResponseChunks(requestID: $requestID, first: $first, offset: $offset) {
+      items
+      totalCount
+      hasMore
+    }
+  }
+`;
+
+export function useRequestResponseChunks(
+  requestID: string,
+  variables: { first: number; offset: number },
+  options?: { projectId?: string | null; enabled?: boolean }
+) {
+  const { handleError } = useErrorHandler();
+  const { t } = useTranslation();
+  const selectedProjectId = useSelectedProjectId();
+  const projectId = options?.projectId !== undefined ? options.projectId : selectedProjectId;
+  const enabled = options?.enabled ?? true;
+
+  return useQuery({
+    queryKey: ['request-response-chunks', requestID, variables, projectId] as const,
+    queryFn: async () => {
+      try {
+        const headers = projectId ? { 'X-Project-ID': projectId } : undefined;
+        const data = await graphqlRequest<{
+          requestResponseChunks: { items: any[]; totalCount: number; hasMore: boolean };
+        }>(GET_REQUEST_RESPONSE_CHUNKS, { requestID, ...variables }, headers);
+        return data.requestResponseChunks;
+      } catch (error) {
+        handleError(error, t('common.errors.internalServerError'));
+        throw error;
+      }
+    },
+    enabled: enabled && !!requestID,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
