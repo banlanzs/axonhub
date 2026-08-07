@@ -159,6 +159,7 @@ export function useAnalyticsOverview(filter: AnalyticsFilter | null) {
       );
       return analyticsOverviewSchema.parse(data.analyticsOverview);
     },
+    staleTime: 60 * 1000,
     refetchInterval: 60000,
     placeholderData: (previousData) => previousData,
   });
@@ -175,6 +176,7 @@ export function useAnalyticsDailyStats(filter: AnalyticsFilter | null) {
       );
       return data.analyticsDailyStats.map((item) => analyticsDailyStatSchema.parse(item));
     },
+    staleTime: 60 * 1000,
     refetchInterval: 60000,
     placeholderData: (previousData) => previousData,
   });
@@ -192,6 +194,7 @@ export function useAnalyticsDimensionStats(filter: AnalyticsFilter | null, dimen
       return data.analyticsDimensionStats.map((item) => analyticsDimensionStatSchema.parse(item));
     },
     enabled: !!dimension,
+    staleTime: 60 * 1000,
     refetchInterval: 60000,
     placeholderData: (previousData) => previousData,
   });
