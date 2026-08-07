@@ -29,7 +29,7 @@ export const requestExecutionSchema = z.object({
   requestHeaders: z.any().nullable().optional(),
   requestBody: z.any(), // JSONRawMessage
   responseBody: z.any().nullable(), // JSONRawMessage
-  responseChunks: z.array(z.any()).nullable(), // [JSONRawMessage!]
+  responseChunks: z.array(z.any()).nullable().optional(), // [JSONRawMessage!]
   errorMessage: z.string().nullable(),
   responseStatusCode: z.number().nullable().optional(),
   status: requestExecutionStatusSchema,

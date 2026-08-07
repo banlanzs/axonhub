@@ -242,6 +242,7 @@ function buildRequestExecutionsQuery(permissions: { canViewChannels: boolean }) 
                 requestHeaders
                 requestBody
                 responseBody
+                responseChunks
                 errorMessage
                 responseStatusCode
                 status
