@@ -130,6 +130,7 @@ dumps
 .gocache
 .reasonix
 MEMORY.md
+.codex
 
 config.yml
 internal/server/static/dist/*
