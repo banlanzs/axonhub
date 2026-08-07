@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { graphqlRequest } from '@/gql/graphql';
 import { pageInfoSchema } from '@/gql/pagination';
 import { useTranslation } from 'react-i18next';
@@ -1071,9 +1071,13 @@ export function useQueryChannels(
       }
     },
     // Poll so the live limiter snapshot (in-flight / queue) stays roughly fresh.
-    // 5s is light traffic; pause when the tab is hidden.
-    refetchInterval: 5000,
+    // 30s is sufficient for the limiter view; kept conservative to avoid re-fetching the
+    // full channel payload (credentials, settings, endpoints, disabledAPIKeys) too often.
+    refetchInterval: 30000,
     refetchIntervalInBackground: false,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
 

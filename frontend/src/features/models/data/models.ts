@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { graphqlRequest } from '@/gql/graphql';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -513,6 +513,9 @@ export function useQueryAllModels(args: QueryAllModelsArgs) {
       });
       return modelConnectionSchema.parse(data.models);
     },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
 
