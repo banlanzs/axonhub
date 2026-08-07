@@ -84,45 +84,55 @@ export function DataTableViewOptions<TData>({ table }: DataTableViewOptionsProps
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Columns shown in the dialog: data columns + details column, in current display order
+  // Default column order (full): all leaf columns in their definition order
+  const defaultOrder = useMemo(() => table.getAllLeafColumns().map((c) => c.id), [table]);
+
+  // Currently-active column order in the table (may be empty before hydration)
+  const activeOrder = table.getState().columnOrder;
+  const currentFullOrder = activeOrder.length > 0 ? activeOrder : defaultOrder;
+
+  // Columns shown in the dialog: hideable data/details columns, sorted by
+  // current table order. Pinned (non-hideable) columns stay in place.
   const sortableColumns = useMemo(() => {
-    const columns = table.getAllLeafColumns().filter((column) => {
+    const allColumns = table.getAllLeafColumns();
+    const sortable = allColumns.filter((column) => {
       const accessorKey = column.columnDef.accessorKey;
       const isDataColumn = typeof column.accessorFn !== 'undefined' || typeof accessorKey !== 'undefined';
       const isDetailsColumn = column.id === 'details' || column.id === 'detail';
       return (isDataColumn || isDetailsColumn) && column.getCanHide();
     });
-    const order = table.getState().columnOrder;
-    if (order.length > 0) {
-      const ordered = [...columns].sort((a, b) => {
-        const ia = order.indexOf(a.id);
-        const ib = order.indexOf(b.id);
-        return (ia === -1 ? Number.MAX_SAFE_INTEGER : ia) - (ib === -1 ? Number.MAX_SAFE_INTEGER : ib);
-      });
-      return ordered;
-    }
-    return columns;
-  }, [table]);
+    // Sort sortable columns by their index in the current full order
+    return [...sortable].sort((a, b) => {
+      const ia = currentFullOrder.indexOf(a.id);
+      const ib = currentFullOrder.indexOf(b.id);
+      return (ia === -1 ? Number.MAX_SAFE_INTEGER : ia) - (ib === -1 ? Number.MAX_SAFE_INTEGER : ib);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table, currentFullOrder]);
+
+  // Reorder a sub-sequence of sortable columns within the full order, leaving
+  // pinned columns (non-hideable) untouched.
+  const reorderFullOrder = (sortableIds: string[], oldIndex: number, newIndex: number): string[] => {
+    const newSortableOrder = arrayMove(sortableIds, oldIndex, newIndex);
+    const sortableSet = new Set(newSortableOrder);
+    const sortableCursor = { i: 0 };
+    return currentFullOrder.map((id) => (sortableSet.has(id) ? newSortableOrder[sortableCursor.i++] : id));
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const ids = sortableColumns.map((column) => column.id);
-    const oldIndex = ids.indexOf(String(active.id));
-    const newIndex = ids.indexOf(String(over.id));
+    const sortableIds = sortableColumns.map((column) => column.id);
+    const oldIndex = sortableIds.indexOf(String(active.id));
+    const newIndex = sortableIds.indexOf(String(over.id));
     if (oldIndex === -1 || newIndex === -1) return;
 
-    table.setColumnOrder(arrayMove(ids, oldIndex, newIndex));
+    table.setColumnOrder(reorderFullOrder(sortableIds, oldIndex, newIndex));
   };
 
   const handleResetOrder = () => {
-    table.setColumnOrder(
-      table
-        .getAllLeafColumns()
-        .filter((column) => (typeof column.accessorFn !== 'undefined' || typeof column.columnDef.accessorKey !== 'undefined' || column.id === 'details' || column.id === 'detail') && column.getCanHide())
-        .map((column) => column.id)
-    );
+    table.setColumnOrder(defaultOrder);
   };
 
   return (
