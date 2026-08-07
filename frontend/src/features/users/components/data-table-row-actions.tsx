@@ -1,5 +1,6 @@
 import { DotsHorizontalIcon } from '@radix-ui/react-icons';
 import { Row } from '@tanstack/react-table';
+import { memo } from 'react';
 import { IconEdit, IconUserOff, IconUserCheck, IconKey, IconUserPlus, IconTrash } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -19,16 +20,16 @@ interface DataTableRowActionsProps {
   row: Row<User>;
 }
 
-export function DataTableRowActions({ row }: DataTableRowActionsProps) {
+export const DataTableRowActions = memo(function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const { t } = useTranslation();
   const { setOpen, setCurrentRow } = useUsers();
   const { userPermissions } = usePermissions();
-  const { auth } = useAuthStore();
+  const currentUserId = useAuthStore((state) => state.auth?.user?.id);
 
   // Can't delete self, owner users, or if no permission
   const canDelete = userPermissions.canDelete &&
     !row.original.isOwner &&
-    auth?.user?.id !== row.original.id;
+    currentUserId !== row.original.id;
 
   // Don't show menu if user has no write permissions
   if (!userPermissions.canWrite && !userPermissions.canDelete) {

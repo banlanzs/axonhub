@@ -1,9 +1,10 @@
 import { format } from 'date-fns';
 import { ColumnDef, Table, Row } from '@tanstack/react-table';
+import { memo } from 'react';
 import { Copy, Eye } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { cn, extractNumberID } from '@/lib/utils';
+import { extractNumberID } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DataTableColumnHeader } from '@/components/data-table-column-header';
@@ -12,7 +13,7 @@ import { useApiKeysContext } from '../context/apikeys-context';
 import { ApiKey } from '../data/schema';
 import { DataTableRowActions } from './data-table-row-actions';
 
-function ApiKeyCell({ apiKey, fullApiKey }: { apiKey: string; fullApiKey: ApiKey }) {
+const ApiKeyCell = memo(function ApiKeyCell({ apiKey, fullApiKey }: { apiKey: string; fullApiKey: ApiKey }) {
   const { t } = useTranslation();
   const { openDialog } = useApiKeysContext();
 
@@ -39,7 +40,71 @@ function ApiKeyCell({ apiKey, fullApiKey }: { apiKey: string; fullApiKey: ApiKey
       </Button>
     </div>
   );
-}
+});
+ApiKeyCell.displayName = 'ApiKeyCell';
+
+const CreatorCell = memo(function CreatorCell({ row }: { row: Row<ApiKey> }) {
+  const { t } = useTranslation();
+  const creator = row.original.user;
+  const displayName = creator ? `${creator.firstName} ${creator.lastName}` : t('apikeys.user.deleted');
+  return <LongText className='text-muted-foreground max-w-24'>{displayName}</LongText>;
+});
+CreatorCell.displayName = 'CreatorCell';
+
+const TypeCell = memo(function TypeCell({ row }: { row: Row<ApiKey> }) {
+  const { t } = useTranslation();
+  const type = row.getValue('type') as string;
+  const typeText =
+    {
+      user: t('apikeys.type.user'),
+      personal: t('apikeys.type.personal'),
+      service_account: t('apikeys.type.service_account'),
+      noauth: t('apikeys.type.noauth'),
+    }[type] || type;
+
+  const typeColor =
+    {
+      user: 'text-blue-600',
+      personal: 'text-emerald-600',
+      service_account: 'text-purple-600',
+    }[type] || 'text-muted-foreground';
+
+  return <div className={`text-sm ${typeColor}`}>{typeText}</div>;
+});
+TypeCell.displayName = 'TypeCell';
+
+const StatusCell = memo(function StatusCell({ row }: { row: Row<ApiKey> }) {
+  const { t } = useTranslation();
+  const status = row.getValue('status') as string;
+  const statusText =
+    {
+      enabled: t('apikeys.status.enabled'),
+      disabled: t('apikeys.status.disabled'),
+      archived: t('apikeys.status.archived'),
+    }[status] || t('apikeys.status.disabled');
+
+  const statusColor =
+    {
+      enabled: 'text-green-600',
+      disabled: 'text-red-600',
+      archived: 'text-orange-600',
+    }[status] || 'text-red-600';
+
+  return <div className={`text-sm ${statusColor}`}>{statusText}</div>;
+});
+StatusCell.displayName = 'StatusCell';
+
+const CreatedAtCell = memo(function CreatedAtCell({ row }: { row: Row<ApiKey> }) {
+  const date = row.getValue('createdAt') as Date;
+  return <div className='text-muted-foreground'>{format(date, 'yyyy-MM-dd HH:mm')}</div>;
+});
+CreatedAtCell.displayName = 'CreatedAtCell';
+
+const UpdatedAtCell = memo(function UpdatedAtCell({ row }: { row: Row<ApiKey> }) {
+  const date = row.getValue('updatedAt') as Date;
+  return <div className='text-muted-foreground'>{format(date, 'yyyy-MM-dd HH:mm')}</div>;
+});
+UpdatedAtCell.displayName = 'UpdatedAtCell';
 
 export const createColumns = (t: ReturnType<typeof useTranslation>['t'], canWrite: boolean = true, canViewCreators: boolean = false): ColumnDef<ApiKey>[] => [
   ...(canWrite
@@ -99,11 +164,7 @@ export const createColumns = (t: ReturnType<typeof useTranslation>['t'], canWrit
         {
           accessorKey: 'creator',
           header: ({ column }) => <DataTableColumnHeader column={column} title={t('apikeys.columns.creator')} />,
-          cell: ({ row }) => {
-            const creator = row.original.user;
-            const displayName = creator ? `${creator.firstName} ${creator.lastName}` : t('apikeys.user.deleted');
-            return <LongText className='text-muted-foreground max-w-24'>{displayName}</LongText>;
-          },
+          cell: ({ row }) => <CreatorCell row={row} />,
           filterFn: (row, _id, value) => {
             const creator = row.original.user;
             if (!creator) return false;
@@ -116,25 +177,7 @@ export const createColumns = (t: ReturnType<typeof useTranslation>['t'], canWrit
   {
     accessorKey: 'type',
     header: ({ column }) => <DataTableColumnHeader column={column} title={t('apikeys.columns.type')} />,
-    cell: ({ row }) => {
-      const type = row.getValue('type') as string;
-      const typeText =
-        {
-          user: t('apikeys.type.user'),
-          personal: t('apikeys.type.personal'),
-          service_account: t('apikeys.type.service_account'),
-          noauth: t('apikeys.type.noauth'),
-        }[type] || type;
-
-      const typeColor =
-        {
-          user: 'text-blue-600',
-          personal: 'text-emerald-600',
-          service_account: 'text-purple-600',
-        }[type] || 'text-muted-foreground';
-
-      return <div className={`text-sm ${typeColor}`}>{typeText}</div>;
-    },
+    cell: ({ row }) => <TypeCell row={row} />,
     filterFn: (row, _id, value) => {
       return value.includes(row.getValue('type'));
     },
@@ -143,24 +186,7 @@ export const createColumns = (t: ReturnType<typeof useTranslation>['t'], canWrit
   {
     accessorKey: 'status',
     header: ({ column }) => <DataTableColumnHeader column={column} title={t('common.columns.status')} />,
-    cell: ({ row }) => {
-      const status = row.getValue('status') as string;
-      const statusText =
-        {
-          enabled: t('apikeys.status.enabled'),
-          disabled: t('apikeys.status.disabled'),
-          archived: t('apikeys.status.archived'),
-        }[status] || t('apikeys.status.disabled');
-
-      const statusColor =
-        {
-          enabled: 'text-green-600',
-          disabled: 'text-red-600',
-          archived: 'text-orange-600',
-        }[status] || 'text-red-600';
-
-      return <div className={`text-sm ${statusColor}`}>{statusText}</div>;
-    },
+    cell: ({ row }) => <StatusCell row={row} />,
     filterFn: (row, _id, value) => {
       return value.includes(row.getValue('status'));
     },
@@ -169,18 +195,12 @@ export const createColumns = (t: ReturnType<typeof useTranslation>['t'], canWrit
   {
     accessorKey: 'createdAt',
     header: ({ column }) => <DataTableColumnHeader column={column} title={t('common.columns.createdAt')} />,
-    cell: ({ row }) => {
-      const date = row.getValue('createdAt') as Date;
-      return <div className='text-muted-foreground'>{format(date, 'yyyy-MM-dd HH:mm')}</div>;
-    },
+    cell: ({ row }) => <CreatedAtCell row={row} />,
   },
   {
     accessorKey: 'updatedAt',
     header: ({ column }) => <DataTableColumnHeader column={column} title={t('common.columns.updatedAt')} />,
-    cell: ({ row }) => {
-      const date = row.getValue('updatedAt') as Date;
-      return <div className='text-muted-foreground'>{format(date, 'yyyy-MM-dd HH:mm')}</div>;
-    },
+    cell: ({ row }) => <UpdatedAtCell row={row} />,
   },
   {
     id: 'actions',

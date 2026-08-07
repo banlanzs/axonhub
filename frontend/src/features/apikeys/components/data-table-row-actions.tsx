@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { DotsHorizontalIcon } from '@radix-ui/react-icons';
 import { Row } from '@tanstack/react-table';
 import { IconUserOff, IconUserCheck, IconEdit, IconSettings, IconArchive, IconCheck, IconRefresh } from '@tabler/icons-react';
@@ -15,7 +15,7 @@ interface DataTableRowActionsProps {
   row: Row<ApiKey>;
 }
 
-export function DataTableRowActions({ row }: DataTableRowActionsProps) {
+export const DataTableRowActions = memo(function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const { t } = useTranslation();
   const { openDialog } = useApiKeysContext();
   const { apiKeyPermissions } = usePermissions();
