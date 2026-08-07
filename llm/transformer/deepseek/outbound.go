@@ -112,18 +112,21 @@ func (t *OutboundTransformer) TransformRequest(
 	}
 
 	thinkingDisabled := llmReq.ReasoningEffort == "none"
+	thinkingEnabled := !thinkingDisabled && llmReq.ReasoningEffort != ""
 
-	dsReq.Thinking = &Thinking{
-		Type: "enabled",
-	}
-	if thinkingDisabled {
-		dsReq.Thinking.Type = "disabled"
-		// Clear ReasoningEffort to avoid sending "none" to DeepSeek API,
-		// which only accepts high/low/medium/max/xhigh.
-		dsReq.Request.ReasoningEffort = ""
+	if thinkingDisabled || thinkingEnabled {
+		dsReq.Thinking = &Thinking{
+			Type: "enabled",
+		}
+		if thinkingDisabled {
+			dsReq.Thinking.Type = "disabled"
+			// Clear ReasoningEffort to avoid sending "none" to DeepSeek API,
+			// which only accepts high/low/medium/max/xhigh.
+			dsReq.Request.ReasoningEffort = ""
+		}
 	}
 
-	if !thinkingDisabled {
+	if thinkingEnabled {
 		for i := range dsReq.Messages {
 			if dsReq.Messages[i].Role == "assistant" && dsReq.Messages[i].ReasoningContent == nil {
 				dsReq.Messages[i].ReasoningContent = lo.ToPtr("\n")

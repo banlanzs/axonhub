@@ -126,27 +126,27 @@ func TestOutboundTransformer_TransformRequest_Thinking(t *testing.T) {
 	tests := []struct {
 		name             string
 		reasoningEffort  string
-		expectedThinking string
+		expectedThinking *string // nil = no thinking field sent
 	}{
 		{
 			name:             "reasoning effort high enables thinking",
 			reasoningEffort:  "high",
-			expectedThinking: "enabled",
+			expectedThinking: lo.ToPtr("enabled"),
 		},
 		{
 			name:             "reasoning effort medium enables thinking",
 			reasoningEffort:  "medium",
-			expectedThinking: "enabled",
+			expectedThinking: lo.ToPtr("enabled"),
 		},
 		{
 			name:             "reasoning effort none disables thinking",
 			reasoningEffort:  "none",
-			expectedThinking: "disabled",
+			expectedThinking: lo.ToPtr("disabled"),
 		},
 		{
-			name:             "empty reasoning effort enables thinking by default",
+			name:             "empty reasoning effort omits thinking field",
 			reasoningEffort:  "",
-			expectedThinking: "enabled",
+			expectedThinking: nil,
 		},
 	}
 
@@ -176,8 +176,12 @@ func TestOutboundTransformer_TransformRequest_Thinking(t *testing.T) {
 			err = json.Unmarshal(got.Body, &dsReq)
 			require.NoError(t, err)
 
-			require.NotNil(t, dsReq.Thinking)
-			assert.Equal(t, tt.expectedThinking, dsReq.Thinking.Type)
+			if tt.expectedThinking == nil {
+				assert.Nil(t, dsReq.Thinking, "thinking should not be sent when effort is empty")
+			} else {
+				require.NotNil(t, dsReq.Thinking)
+				assert.Equal(t, *tt.expectedThinking, dsReq.Thinking.Type)
+			}
 		})
 	}
 }
@@ -245,7 +249,7 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 		reasoningEffort   string
 		messages          []llm.Message
 		expectedReasoning []map[string]any // per assistant message: {"reasoning_content": "<value>"} or nil
-		expectThinking    bool
+		expectThinking    *bool            // nil = no thinking field sent; true/false = enabled/disabled
 	}{
 		{
 			name:            "thinking enabled fills empty reasoning_content for assistant messages",
@@ -254,7 +258,7 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 				{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("Hello")}},
 				{Role: "assistant", Content: llm.MessageContent{Content: lo.ToPtr("Hi")}},
 			},
-			expectThinking: true,
+			expectThinking: lo.ToPtr(true),
 			expectedReasoning: []map[string]any{
 				{"reasoning_content": "\n"},
 			},
@@ -266,21 +270,21 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 				{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("Hello")}},
 				{Role: "assistant", Content: llm.MessageContent{Content: lo.ToPtr("Hi")}, ReasoningContent: lo.ToPtr("Let me think...")},
 			},
-			expectThinking: true,
+			expectThinking: lo.ToPtr(true),
 			expectedReasoning: []map[string]any{
 				{"reasoning_content": "Let me think..."},
 			},
 		},
 		{
-			name:            "default thinking fills reasoning_content when effort is empty",
+			name:            "empty effort omits thinking and does not fill reasoning_content",
 			reasoningEffort: "",
 			messages: []llm.Message{
 				{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("Hello")}},
 				{Role: "assistant", Content: llm.MessageContent{Content: lo.ToPtr("Hi")}},
 			},
-			expectThinking: true,
+			expectThinking: nil,
 			expectedReasoning: []map[string]any{
-				{"reasoning_content": "\n"},
+				nil,
 			},
 		},
 		{
@@ -290,7 +294,7 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 				{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("Hello")}},
 				{Role: "assistant", Content: llm.MessageContent{Content: lo.ToPtr("Hi")}},
 			},
-			expectThinking: false,
+			expectThinking: lo.ToPtr(false),
 			expectedReasoning: []map[string]any{
 				nil,
 			},
@@ -306,7 +310,7 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 				{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("Great")}},
 				{Role: "assistant", Content: llm.MessageContent{Content: lo.ToPtr("Thanks")}},
 			},
-			expectThinking: true,
+			expectThinking: lo.ToPtr(true),
 			expectedReasoning: []map[string]any{
 				{"reasoning_content": "\n"},
 				{"reasoning_content": "thinking"},
@@ -321,7 +325,7 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 				{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("Hello")}},
 				{Role: "assistant", Content: llm.MessageContent{Content: lo.ToPtr("Hi")}},
 			},
-			expectThinking: true,
+			expectThinking: lo.ToPtr(true),
 			expectedReasoning: []map[string]any{
 				{"reasoning_content": "\n"},
 			},
@@ -347,12 +351,15 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 			err = json.Unmarshal(got.Body, &dsReq)
 			require.NoError(t, err)
 
-			require.NotNil(t, dsReq.Thinking)
-
-			if tt.expectThinking {
-				assert.Equal(t, "enabled", dsReq.Thinking.Type)
+			if tt.expectThinking == nil {
+				assert.Nil(t, dsReq.Thinking, "thinking should not be sent when effort is empty")
 			} else {
-				assert.Equal(t, "disabled", dsReq.Thinking.Type)
+				require.NotNil(t, dsReq.Thinking)
+				if *tt.expectThinking {
+					assert.Equal(t, "enabled", dsReq.Thinking.Type)
+				} else {
+					assert.Equal(t, "disabled", dsReq.Thinking.Type)
+				}
 			}
 
 			// Collect assistant messages in order
