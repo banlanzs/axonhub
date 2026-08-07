@@ -126,4 +126,4 @@ export const DataTableRowActions = memo(function DataTableRowActions({ row }: Da
       </DropdownMenu>
     </>
   );
-}
+});

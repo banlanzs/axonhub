@@ -123,4 +123,4 @@ export const DataTableRowActions = memo(function DataTableRowActions({ row }: Da
       <ApiKeyTokenChartDialog apiKey={apiKey} open={chartOpen} onOpenChange={setChartOpen} />
     </>
   );
-}
+});
