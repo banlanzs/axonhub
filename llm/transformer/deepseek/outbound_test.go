@@ -256,7 +256,7 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 			},
 			expectThinking: true,
 			expectedReasoning: []map[string]any{
-				{"reasoning_content": ""},
+				{"reasoning_content": "\n"},
 			},
 		},
 		{
@@ -280,7 +280,7 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 			},
 			expectThinking: true,
 			expectedReasoning: []map[string]any{
-				{"reasoning_content": ""},
+				{"reasoning_content": "\n"},
 			},
 		},
 		{
@@ -308,9 +308,9 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 			},
 			expectThinking: true,
 			expectedReasoning: []map[string]any{
-				{"reasoning_content": ""},
+				{"reasoning_content": "\n"},
 				{"reasoning_content": "thinking"},
-				{"reasoning_content": ""},
+				{"reasoning_content": "\n"},
 			},
 		},
 		{
@@ -323,7 +323,7 @@ func TestOutboundTransformer_TransformRequest_ReasoningContentFill(t *testing.T)
 			},
 			expectThinking: true,
 			expectedReasoning: []map[string]any{
-				{"reasoning_content": ""},
+				{"reasoning_content": "\n"},
 			},
 		},
 	}

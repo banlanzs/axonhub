@@ -126,7 +126,7 @@ func (t *OutboundTransformer) TransformRequest(
 	if !thinkingDisabled {
 		for i := range dsReq.Messages {
 			if dsReq.Messages[i].Role == "assistant" && dsReq.Messages[i].ReasoningContent == nil {
-				dsReq.Messages[i].ReasoningContent = lo.ToPtr("")
+				dsReq.Messages[i].ReasoningContent = lo.ToPtr("\n")
 			}
 		}
 	}
