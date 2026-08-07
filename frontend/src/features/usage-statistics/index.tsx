@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Header } from '@/components/layout/header';
 import { Main } from '@/components/layout/main';
@@ -11,6 +11,7 @@ import { formatNumber } from '@/utils/format-number';
 import { useGeneralSettings } from '@/features/system/data/system';
 import { useUsageStatsByUser } from './data/usage-stats';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -24,6 +25,7 @@ export default function UsageStatisticsPage() {
   const { t, i18n } = useTranslation();
   const [dateRange, setDateRange] = useState<DateTimeRangeValue | undefined>();
   const [searchTerm, setSearchTerm] = useState('');
+  const [{ pageIndex, pageSize }, setPagination] = useState({ pageIndex: 0, pageSize: 20 });
 
   const timeWindowParam = useMemo(() => {
     if (!dateRange) return undefined;
@@ -61,6 +63,14 @@ export default function UsageStatisticsPage() {
       item.userName.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [allData, searchTerm]);
+
+  // Reset to first page when the filtered dataset shrinks (search / date range change)
+  const safePageIndex = Math.min(pageIndex, Math.max(0, Math.ceil(filteredData.length / pageSize) - 1));
+  const pageData = useMemo(
+    () => filteredData.slice(safePageIndex * pageSize, safePageIndex * pageSize + pageSize),
+    [filteredData, safePageIndex, pageSize]
+  );
+  const totalPage = Math.max(1, Math.ceil(filteredData.length / pageSize));
 
   if (isLoading || isSettingsLoading) {
     return (
@@ -100,10 +110,19 @@ export default function UsageStatisticsPage() {
                 placeholder={t('search.placeholder')}
                 className='h-8 pl-8'
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setPagination((p) => ({ ...p, pageIndex: 0 }));
+                }}
               />
             </div>
-            <DateRangePicker value={dateRange} onChange={setDateRange} />
+            <DateRangePicker
+              value={dateRange}
+              onChange={(v) => {
+                setDateRange(v);
+                setPagination((p) => ({ ...p, pageIndex: 0 }));
+              }}
+            />
             {dateRange && (dateRange.from || dateRange.to) && (
               <Button
                 variant='ghost'
@@ -136,12 +155,12 @@ export default function UsageStatisticsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody className='space-y-1 !bg-[var(--table-background)] p-2'>
-                {filteredData.map((item, index) => (
+                {pageData.map((item, index) => (
                   <TableRow
                     key={item.userId}
                     className='group/row table-row-hover rounded-xl border-0 !bg-[var(--table-background)] transition-all duration-200 ease-in-out'
                   >
-                    <TableCell className='text-muted-foreground text-center text-xs border-0 bg-inherit px-4 py-3'>{index + 1}</TableCell>
+                    <TableCell className='text-muted-foreground text-center text-xs border-0 bg-inherit px-4 py-3'>{safePageIndex * pageSize + index + 1}</TableCell>
                     <TableCell className='font-medium border-0 bg-inherit px-4 py-3'>{item.userName}</TableCell>
                     <TableCell className='text-right font-mono text-sm border-0 bg-inherit px-4 py-3'>{formatNumber(item.requestCount)}</TableCell>
                     <TableCell className='text-right font-mono text-sm border-0 bg-inherit px-4 py-3'>{formatNumber(item.totalTokens)}</TableCell>
@@ -157,6 +176,61 @@ export default function UsageStatisticsPage() {
             </div>
           )}
         </div>
+
+        {filteredData.length > 0 && (
+          <div className='flex flex-wrap items-center justify-between gap-2 px-2 pt-3 flex-shrink-0'>
+            <div className='text-muted-foreground text-sm'>
+              {t('pagination.showing', {
+                start: safePageIndex * pageSize + 1,
+                end: Math.min((safePageIndex + 1) * pageSize, filteredData.length),
+                total: filteredData.length,
+              })}
+            </div>
+            <div className='flex flex-wrap items-center gap-4'>
+              <div className='flex items-center space-x-2'>
+                <p className='hidden text-sm font-medium sm:block'>{t('pagination.rowsPerPage')}</p>
+                <Select
+                  value={`${pageSize}`}
+                  onValueChange={(value) => setPagination((p) => ({ pageIndex: 0, pageSize: Number(value) }))}
+                >
+                  <SelectTrigger className='h-8 w-[70px]'>
+                    <SelectValue placeholder={pageSize} />
+                  </SelectTrigger>
+                  <SelectContent side='top'>
+                    {[20, 50, 100].map((size) => (
+                      <SelectItem key={size} value={`${size}`}>
+                        {size}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className='flex items-center space-x-2'>
+                <Button
+                  variant='outline'
+                  className='h-8 w-8 p-0'
+                  disabled={safePageIndex === 0}
+                  onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))}
+                >
+                  <span className='sr-only'>{t('pagination.previousPage')}</span>
+                  <ChevronLeftIcon className='h-4 w-4' />
+                </Button>
+                <div className='text-sm font-medium'>
+                  {t('pagination.currentPage', { current: safePageIndex + 1, total: totalPage })}
+                </div>
+                <Button
+                  variant='outline'
+                  className='h-8 w-8 p-0'
+                  disabled={safePageIndex >= totalPage - 1}
+                  onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))}
+                >
+                  <span className='sr-only'>{t('pagination.nextPage')}</span>
+                  <ChevronRightIcon className='h-4 w-4' />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </Main>
     </div>
   );
