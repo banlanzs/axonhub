@@ -315,5 +315,8 @@
   "auth.signIn.footer.agreement": "登录即表示您同意我们的服务条款和隐私政策",
   "settings.nav.appearance": "外观",
   "settings.nav.display": "显示",
-  "settings.nav.notifications": "通知"
+  "settings.nav.notifications": "通知",
+  "common.columnOrder": "列顺序",
+  "common.resetOrder": "重置顺序",
+  "common.dragToReorder": "拖动调整列顺序"
 }
