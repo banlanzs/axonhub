@@ -538,6 +538,7 @@ func TestThinking_AdaptiveOutbound(t *testing.T) {
 	tests := []struct {
 		name     string
 		chatReq  *llm.Request
+		config   *Config
 		validate func(t *testing.T, anthropicReq *MessageRequest)
 	}{
 		{
@@ -626,7 +627,7 @@ func TestThinking_AdaptiveOutbound(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			anthropicReq := convertToAnthropicRequest(tt.chatReq)
+			anthropicReq := convertToAnthropicRequestWithConfig(tt.chatReq, tt.config)
 			tt.validate(t, anthropicReq)
 		})
 	}
@@ -1428,6 +1429,56 @@ func TestDeepSeek_EnsureThinkingBlocksInAssistantMessages(t *testing.T) {
 			},
 		},
 		{
+			name: "DeepSeek with unsigned thinking -> signature placeholder filled",
+			chatReq: &llm.Request{
+				Model:     "deepseek-v4-flash",
+				MaxTokens: lo.ToPtr(int64(32000)),
+				Messages: []llm.Message{
+					{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("hi")}},
+					{
+						Role:             "assistant",
+						ReasoningContent: lo.ToPtr("Real thinking content"),
+						Content:          llm.MessageContent{Content: lo.ToPtr("Answer")},
+						// no ReasoningSignature: typical of adaptive thinking
+						// through a relay that does not sign blocks
+					},
+				},
+			},
+			config: &Config{Type: PlatformDeepSeek},
+			validate: func(t *testing.T, req *MessageRequest) {
+				t.Helper()
+				assistantMsg := req.Messages[1]
+				require.Len(t, assistantMsg.Content.MultipleContent, 2)
+				require.Equal(t, "thinking", assistantMsg.Content.MultipleContent[0].Type)
+				require.Equal(t, "Real thinking content", *assistantMsg.Content.MultipleContent[0].Thinking)
+				require.NotNil(t, assistantMsg.Content.MultipleContent[0].Signature)
+				require.Equal(t, "\n", *assistantMsg.Content.MultipleContent[0].Signature)
+			},
+		},
+		{
+			name: "Non-DeepSeek with unsigned thinking -> signature stays nil",
+			chatReq: &llm.Request{
+				Model:     "claude-sonnet-4-5-20250929",
+				MaxTokens: lo.ToPtr(int64(32000)),
+				Messages: []llm.Message{
+					{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("hi")}},
+					{
+						Role:             "assistant",
+						ReasoningContent: lo.ToPtr("Real thinking content"),
+						Content:          llm.MessageContent{Content: lo.ToPtr("Answer")},
+					},
+				},
+			},
+			config: &Config{Type: PlatformDirect},
+			validate: func(t *testing.T, req *MessageRequest) {
+				t.Helper()
+				assistantMsg := req.Messages[1]
+				require.Len(t, assistantMsg.Content.MultipleContent, 2)
+				require.Equal(t, "thinking", assistantMsg.Content.MultipleContent[0].Type)
+				require.Nil(t, assistantMsg.Content.MultipleContent[0].Signature)
+			},
+		},
+		{
 			name: "DeepSeek with output_config -> thinking blocks added",
 			chatReq: &llm.Request{
 				Model:     "deepseek-v4-pro",
@@ -1451,6 +1502,61 @@ func TestDeepSeek_EnsureThinkingBlocksInAssistantMessages(t *testing.T) {
 				require.Equal(t, "\n", *assistantMsg.Content.MultipleContent[0].Thinking)
 				require.Equal(t, "text", assistantMsg.Content.MultipleContent[1].Type)
 				require.Equal(t, "Hello!", *assistantMsg.Content.MultipleContent[1].Text)
+			},
+		},
+		{
+			name: "metadata thinking_type=adaptive + DeepSeek -> no thinking, output_config used",
+			chatReq: &llm.Request{
+				Model:     "deepseek-chat",
+				MaxTokens: lo.ToPtr(int64(4096)),
+				Messages: []llm.Message{
+					{
+						Role: "user",
+						Content: llm.MessageContent{
+							Content: lo.ToPtr("Hello"),
+						},
+					},
+				},
+				ReasoningEffort: "high",
+				TransformerMetadata: map[string]any{
+					TransformerMetadataKeyThinkingType: "adaptive",
+				},
+			},
+			config: &Config{Type: PlatformDeepSeek},
+			validate: func(t *testing.T, anthropicReq *MessageRequest) {
+				t.Helper()
+				// DeepSeek does not support adaptive thinking; it should be omitted
+				// and output_config.effort used instead.
+				require.Nil(t, anthropicReq.Thinking)
+				require.NotNil(t, anthropicReq.OutputConfig)
+				require.Equal(t, "high", anthropicReq.OutputConfig.Effort)
+			},
+		},
+		{
+			name: "metadata thinking_type=adaptive + DeepSeek + output_config effort -> output_config preserved",
+			chatReq: &llm.Request{
+				Model:     "deepseek-v4-flash",
+				MaxTokens: lo.ToPtr(int64(32000)),
+				Messages: []llm.Message{
+					{
+						Role: "user",
+						Content: llm.MessageContent{
+							Content: lo.ToPtr("Hello"),
+						},
+					},
+				},
+				ReasoningEffort: "xhigh",
+				TransformerMetadata: map[string]any{
+					TransformerMetadataKeyThinkingType:       "adaptive",
+					TransformerMetadataKeyOutputConfigEffort: "max",
+				},
+			},
+			config: &Config{Type: PlatformDeepSeek},
+			validate: func(t *testing.T, anthropicReq *MessageRequest) {
+				t.Helper()
+				require.Nil(t, anthropicReq.Thinking)
+				require.NotNil(t, anthropicReq.OutputConfig)
+				require.Equal(t, "max", anthropicReq.OutputConfig.Effort)
 			},
 		},
 	}

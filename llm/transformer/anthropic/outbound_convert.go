@@ -46,9 +46,11 @@ func ensureAssistantThinkingBlocks(messages []MessageParam) {
 		}
 
 		emptyThinking := "\n"
+		emptySignature := "\n"
 		thinkingBlock := MessageContentBlock{
-			Type:     "thinking",
-			Thinking: &emptyThinking,
+			Type:      "thinking",
+			Thinking:  &emptyThinking,
+			Signature: &emptySignature,
 		}
 
 		if msg.Content.Content != nil {
@@ -139,7 +141,11 @@ func buildBaseRequest(chatReq *llm.Request, config *Config) *MessageRequest {
 			case "disabled":
 				req.Thinking = &Thinking{Type: "disabled"}
 			case "adaptive":
-				req.Thinking = &Thinking{Type: "adaptive"}
+				if supportsAdaptiveThinking(config) {
+					req.Thinking = &Thinking{Type: "adaptive"}
+				}
+				// For platforms that don't support adaptive thinking
+				// (e.g. DeepSeek), rely on output_config.effort instead.
 			}
 		}
 	}
@@ -670,6 +676,14 @@ func buildThinkingBlocks(msg llm.Message, config *Config) []MessageContentBlock 
 		var reasoningSignature *string
 		if reasoningItem.Signature != "" {
 			reasoningSignature = lo.ToPtr(reasoningItem.Signature)
+		}
+
+		// DeepSeek relay APIs require every thinking block to carry a non-empty
+		// signature. When the upstream response omitted one (e.g. adaptive thinking
+		// through a relay that does not sign blocks, or compaction that strips the
+		// signature), fill a placeholder so the relay accepts the history.
+		if config != nil && config.Type == PlatformDeepSeek && reasoningSignature == nil && reasoningContent != nil && *reasoningContent != "" {
+			reasoningSignature = lo.ToPtr("\n")
 		}
 
 		reasoningContent, reasoningSignature = prepareAnthropicReasoning(reasoningContent, reasoningSignature, config)
