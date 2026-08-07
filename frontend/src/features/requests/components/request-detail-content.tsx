@@ -555,7 +555,7 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
                   </div>
                 </div>
                 <div className='bg-muted/20 h-[500px] w-full overflow-auto rounded-lg border p-4'>
-                  <JsonViewer data={request.requestBody} rootName='' defaultExpanded={true} expandDepth='all' hideArrayIndices={true} className='text-sm' />
+                  <JsonViewer data={request.requestBody} rootName='' defaultExpanded={true} expandDepth={2} hideArrayIndices={true} className='text-sm' />
                 </div>
               </div>
             </TabsContent>
@@ -687,7 +687,7 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
                   <TabsContent value='json' className='mt-0 focus-visible:outline-none'>
                     {hasResponseBody ? (
                       <div className='bg-muted/20 h-[500px] w-full overflow-auto rounded-lg border p-4'>
-                        <JsonViewer data={request.responseBody} rootName='' defaultExpanded={true} expandDepth='all' hideArrayIndices={true} className='text-sm' />
+                        <JsonViewer data={request.responseBody} rootName='' defaultExpanded={true} expandDepth={2} hideArrayIndices={true} className='text-sm' />
                       </div>
                     ) : request.status === 'processing' ? (
                       <div className='bg-muted/20 flex h-[500px] w-full items-center justify-center rounded-lg border'>

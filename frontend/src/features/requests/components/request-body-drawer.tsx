@@ -367,7 +367,7 @@ export function RequestBodyDrawer({
                         data={displayedRequest.requestBody}
                         rootName=''
                         defaultExpanded={true}
-                        expandDepth='all'
+                        expandDepth={2}
                         hideArrayIndices={true}
                         globalStringExpanded={globalExpanded}
                         className='text-sm'
@@ -388,7 +388,7 @@ export function RequestBodyDrawer({
                         data={displayedRequest.responseBody}
                         rootName=''
                         defaultExpanded={true}
-                        expandDepth='all'
+                        expandDepth={2}
                         hideArrayIndices={true}
                         globalStringExpanded={globalExpanded}
                         className='text-sm'
