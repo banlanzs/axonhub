@@ -573,6 +573,28 @@ func TestInboundTransformer_TransformRequest_ThinkingValidation(t *testing.T) {
 		require.Nil(t, got.ReasoningBudget)
 	})
 
+	t.Run("thinking disabled ignores output_config effort", func(t *testing.T) {
+		// Claude Code >=2.1.166 sub-agent requests combine thinking.type=disabled with
+		// output_config.effort (CLAUDE_CODE_EFFORT_LEVEL). Providers like DeepSeek reject
+		// the combination, so the effort must be dropped and ReasoningEffort stays "none".
+		req := mkReq(`{
+			"model": "claude-sonnet-4-5-20250929",
+			"max_tokens": 1024,
+			"messages": [{"role": "user", "content": "Hello"}],
+			"thinking": {"type": "disabled"},
+			"output_config": {"effort": "max"}
+		}`)
+
+		got, err := transformer.TransformRequest(t.Context(), req)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, "none", got.ReasoningEffort)
+		require.Nil(t, got.ReasoningBudget)
+		require.Equal(t, "disabled", got.TransformerMetadata[TransformerMetadataKeyThinkingType])
+		_, hasEffort := got.TransformerMetadata[TransformerMetadataKeyOutputConfigEffort]
+		require.False(t, hasEffort)
+	})
+
 	t.Run("thinking enabled requires positive budget_tokens", func(t *testing.T) {
 		req := mkReq(`{
 			"model": "claude-sonnet-4-5-20250929",

@@ -362,8 +362,13 @@ func convertToLLMRequest(anthropicReq *MessageRequest) (*llm.Request, error) {
 		}
 	}
 
-	// Convert output_config
-	if anthropicReq.OutputConfig != nil && anthropicReq.OutputConfig.Effort != "" {
+	// Convert output_config. When thinking is explicitly disabled (e.g. Claude Code
+	// sub-agent requests with CLAUDE_CODE_EFFORT_LEVEL set), output_config.effort is
+	// meaningless and conflicts with the disabled marker on providers like DeepSeek
+	// (thinking.type=disabled combined with reasoning_effort/output_config is rejected
+	// with a 400). Keep ReasoningEffort="none" and drop the effort instead of
+	// overriding the disabled state.
+	if anthropicReq.OutputConfig != nil && anthropicReq.OutputConfig.Effort != "" && chatReq.TransformerMetadata[TransformerMetadataKeyThinkingType] != "disabled" {
 		chatReq.TransformerMetadata[TransformerMetadataKeyOutputConfigEffort] = anthropicReq.OutputConfig.Effort
 		// Map output_config effort to reasoning_effort so other outbound transformers can use it.
 		// Anthropic "max" has no direct equivalent in other providers; map to "xhigh"
