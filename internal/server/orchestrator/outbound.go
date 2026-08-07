@@ -283,25 +283,31 @@ func (ts *OutboundPersistentStream) persistAggregatedResponse(ctx context.Contex
 		}
 	}
 
-	err := ts.RequestService.UpdateRequestExecutionCompleted(
-		ctx,
-		ts.requestExec.ID,
-		meta.ID,
-		responseBody,
-		metrics,
-	)
-	if err != nil {
-		log.Warn(
-			ctx,
-			"Failed to update request execution with chunks, trying basic completion",
-			log.Cause(err),
-		)
-	}
+	// Persist execution status and chunks asynchronously
+	go func() {
+		persistCtx, cancel := xcontext.DetachWithTimeout(ctx, 30*time.Second)
+		defer cancel()
 
-	// Save all response chunks at once
-	if err := ts.RequestService.SaveRequestExecutionChunks(ctx, ts.requestExec.ID, ts.responseChunks); err != nil {
-		log.Warn(ctx, "Failed to save request execution chunks", log.Cause(err))
-	}
+		err := ts.RequestService.UpdateRequestExecutionCompleted(
+			persistCtx,
+			ts.requestExec.ID,
+			meta.ID,
+			responseBody,
+			metrics,
+		)
+		if err != nil {
+			log.Warn(
+				persistCtx,
+				"Failed to update request execution with chunks, trying basic completion",
+				log.Cause(err),
+			)
+		}
+
+		// Save all response chunks at once
+		if err := ts.RequestService.SaveRequestExecutionChunks(persistCtx, ts.requestExec.ID, ts.responseChunks); err != nil {
+			log.Warn(persistCtx, "Failed to save request execution chunks", log.Cause(err))
+		}
+	}()
 }
 
 func isCompletedAggregated(meta llm.ResponseMeta) bool {

@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"time"
 
 	"github.com/tidwall/gjson"
 
 	"github.com/looplj/axonhub/internal/dumper"
 	"github.com/looplj/axonhub/internal/ent"
 	"github.com/looplj/axonhub/internal/log"
+	"github.com/looplj/axonhub/internal/pkg/xcontext"
 	"github.com/looplj/axonhub/internal/server/biz"
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/httpclient"
@@ -260,6 +262,7 @@ func (ts *InboundPersistentStream) persistResponseChunks(ctx context.Context) {
 
 // _persistResponse performs the actual persistence with pre-aggregated data.
 // This avoids redundant aggregation when the data is already available.
+// Writes are executed in a detached goroutine so Close() returns immediately.
 func (ts *InboundPersistentStream) _persistResponse(ctx context.Context, responseBody []byte, meta llm.ResponseMeta) {
 	if ts.request == nil {
 		return
@@ -279,15 +282,23 @@ func (ts *InboundPersistentStream) _persistResponse(ctx context.Context, respons
 		}
 	}
 
-	err := ts.requestService.UpdateRequestCompleted(ctx, ts.request.ID, meta.ID, responseBody, metrics)
-	if err != nil {
-		log.Warn(ctx, "Failed to update request status to completed", log.Cause(err))
-	}
+	// Persist asynchronously — DetachWithTimeout gives a 30s window to finish
+	// without blocking the stream Close() and without being cancelled by the
+	// client disconnecting.
+	go func() {
+		persistCtx, cancel := xcontext.DetachWithTimeout(ctx, 30*time.Second)
+		defer cancel()
 
-	// Save all response chunks at once
-	if err := ts.requestService.SaveRequestChunks(ctx, ts.request.ID, ts.responseChunks); err != nil {
-		log.Warn(ctx, "Failed to save request chunks", log.Cause(err))
-	}
+		err := ts.requestService.UpdateRequestCompleted(persistCtx, ts.request.ID, meta.ID, responseBody, metrics)
+		if err != nil {
+			log.Warn(persistCtx, "Failed to update request status to completed", log.Cause(err))
+		}
+
+		// Save all response chunks at once
+		if err := ts.requestService.SaveRequestChunks(persistCtx, ts.request.ID, ts.responseChunks); err != nil {
+			log.Warn(persistCtx, "Failed to save request chunks", log.Cause(err))
+		}
+	}()
 }
 
 // PersistentInboundTransformer wraps an inbound transformer with enhanced capabilities.
