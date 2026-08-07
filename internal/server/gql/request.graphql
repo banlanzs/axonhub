@@ -11,4 +11,6 @@ type ResponseChunkPage {
 
 extend type Query {
   requestResponseChunks(requestID: ID!, first: Int!, offset: Int!): ResponseChunkPage!
+  requestBody(requestID: ID!): JSONRawMessage
+  responseBody(requestID: ID!): JSONRawMessage
 }

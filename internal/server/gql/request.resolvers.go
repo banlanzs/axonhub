@@ -23,3 +23,21 @@ func (r *queryResolver) RequestResponseChunks(ctx context.Context, requestID obj
 	}
 	return r.requestService.LoadResponseChunksPaginated(ctx, requestID.ID, first, offset)
 }
+
+// RequestBody is the resolver for the requestBody field.
+func (r *queryResolver) RequestBody(ctx context.Context, requestID objects.GUID) (objects.JSONRawMessage, error) {
+	req, err := r.client.Request.Get(ctx, requestID.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get request: %w", err)
+	}
+	return r.requestService.LoadRequestBody(ctx, req)
+}
+
+// ResponseBody is the resolver for the responseBody field.
+func (r *queryResolver) ResponseBody(ctx context.Context, requestID objects.GUID) (objects.JSONRawMessage, error) {
+	req, err := r.client.Request.Get(ctx, requestID.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get request: %w", err)
+	}
+	return r.requestService.LoadResponseBody(ctx, req)
+}

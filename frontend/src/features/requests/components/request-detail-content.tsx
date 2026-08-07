@@ -14,7 +14,7 @@ import { JsonViewer } from '@/components/json-tree-view';
 import { useGeneralSettings } from '@/features/system/data/system';
 import { getTokenFromStorage } from '@/stores/authStore';
 import { useUsageLogs } from '../data/usage-logs';
-import { type Request, useRequest, useRequestExecutions } from '../data';
+import { type Request, useRequest, useRequestBody, useRequestExecutions, useResponseBody } from '../data';
 import { ChunksDialog } from './chunks-dialog';
 import { CurlPreviewDialog } from './curl-preview-dialog';
 import { getStatusColor } from './help';
@@ -44,10 +44,19 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [audioLoadFailed, setAudioLoadFailed] = useState(false);
   const [responseView, setResponseView] = useState<'preview' | 'json'>('preview');
+  const [activeTab, setActiveTab] = useState('overview');
 
   const { data: settings } = useGeneralSettings();
   const { data: requestData, isLoading } = useRequest(requestId, { projectId, disableAutoRefresh: isPreviewStreaming });
   const request = previewRequest ?? requestData;
+
+  // Lazy-load heavy body fields separately from the metadata query.
+  const { data: responseBody, isLoading: isResponseBodyLoading } = useResponseBody(requestId, { projectId, enabled: !!request?.id });
+  const { data: requestBody, isLoading: isRequestBodyLoading } = useRequestBody(requestId, {
+    projectId,
+    enabled: !!request?.id && activeTab === 'request',
+  });
+
   const {
     data: executions,
     isLoading: isExecutionsLoading,
@@ -74,12 +83,12 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
     if (previewRequest) {
       return parseResponse(undefined, previewRequest.responseChunks);
     }
-    return parseResponse(request.responseBody, request.responseChunks);
+    return parseResponse(responseBody, request.responseChunks);
   }, [previewRequest, request]);
 
   const hasPreviewData = !!(parsedResponse.content || parsedResponse.reasoning || parsedResponse.toolCalls.length > 0);
   const isLive = isPreviewStreaming || !!(request?.status === 'processing' && request?.stream);
-  const hasResponseBody = !!(request?.responseBody && Object.keys(request.responseBody).length > 0);
+  const hasResponseBody = !!(responseBody && Object.keys(responseBody).length > 0);
   const hasResponseChunks = !!(request?.stream && request?.contentSaved !== false);
 
   const extractResponseText = useCallback(() => {
@@ -486,7 +495,7 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
 
       <Card className='border-0 shadow-sm'>
         <CardContent className='p-0'>
-          <Tabs defaultValue='request' className='w-full'>
+          <Tabs defaultValue='request' value={activeTab} onValueChange={setActiveTab} className='w-full'>
             <div className='bg-muted/20 border-b px-6 pt-6'>
               <TabsList className='bg-background grid w-full grid-cols-3'>
                 <TabsTrigger value='request' className='data-[state=active]:bg-primary data-[state=active]:text-primary-foreground'>
@@ -506,7 +515,7 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
                 <Button
                   variant='outline'
                   size='sm'
-                  onClick={() => showRequestCurlPreview(request.requestHeaders, request.requestBody, request.format)}
+                  onClick={() => showRequestCurlPreview(request.requestHeaders, requestBody, request.format)}
                   className='hover:bg-primary hover:text-primary-foreground'
                 >
                   <Terminal className='mr-2 h-4 w-4' />
@@ -543,18 +552,24 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
                     {t('requests.columns.requestBody')}
                   </h4>
                   <div className='flex gap-2'>
-                    <Button variant='outline' size='sm' onClick={() => copyToClipboard(formatJson(request.requestBody))} className='hover:bg-primary hover:text-primary-foreground'>
+                    <Button variant='outline' size='sm' onClick={() => copyToClipboard(formatJson(requestBody))} className='hover:bg-primary hover:text-primary-foreground'>
                       <Copy className='mr-2 h-4 w-4' />
                       {t('requests.dialogs.jsonViewer.copy')}
                     </Button>
-                    <Button variant='outline' size='sm' onClick={() => downloadFile(formatJson(request.requestBody), `request-body-${request.id}.json`)} className='hover:bg-primary hover:text-primary-foreground'>
+                    <Button variant='outline' size='sm' onClick={() => downloadFile(formatJson(requestBody), `request-body-${request.id}.json`)} className='hover:bg-primary hover:text-primary-foreground'>
                       <Download className='mr-2 h-4 w-4' />
                       {t('requests.dialogs.jsonViewer.download')}
                     </Button>
                   </div>
                 </div>
                 <div className='bg-muted/20 h-[500px] w-full overflow-auto rounded-lg border p-4'>
-                  <JsonViewer data={request.requestBody} rootName='' defaultExpanded={true} expandDepth={2} hideArrayIndices={true} className='text-sm' />
+                  {isRequestBodyLoading ? (
+                    <div className='flex h-full items-center justify-center'>
+                      <div className='border-primary h-6 w-6 animate-spin rounded-full border-b-2'></div>
+                    </div>
+                  ) : (
+                    <JsonViewer data={requestBody} rootName='' defaultExpanded={true} expandDepth={2} hideArrayIndices={true} className='text-sm' />
+                  )}
                 </div>
               </div>
             </TabsContent>
@@ -611,7 +626,7 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
                         if (responseView === 'preview') {
                           copyToClipboard(extractResponseText());
                         } else {
-                          copyToClipboard(formatJson(request.responseBody));
+                          copyToClipboard(formatJson(responseBody));
                         }
                       }}
                       disabled={responseView === 'preview' ? !extractResponseText() : !hasResponseBody}
@@ -623,7 +638,7 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
                     <Button
                       variant='outline'
                       size='sm'
-                      onClick={() => downloadFile(formatJson(request.responseBody), `response-body-${request.id}.json`)}
+                      onClick={() => downloadFile(formatJson(responseBody), `response-body-${request.id}.json`)}
                       disabled={!hasResponseBody}
                       className='hover:bg-primary hover:text-primary-foreground disabled:opacity-50'
                     >
@@ -662,7 +677,7 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
                     ) : hasPreviewData || isLive ? (
                       <ResponseFlow
                         chunks={request.responseChunks}
-                        body={request.responseBody}
+                        body={responseBody}
                         isLive={isLive}
                         reasoningDurationMs={request.metricsReasoningDurationMs}
                       />
@@ -684,9 +699,16 @@ export function RequestDetailContent({ requestId, projectId, previewRequest, isP
                   </TabsContent>
 
                   <TabsContent value='json' className='mt-0 focus-visible:outline-none'>
-                    {hasResponseBody ? (
+                    {isResponseBodyLoading ? (
+                      <div className='bg-muted/20 flex h-[500px] w-full items-center justify-center rounded-lg border'>
+                        <div className='space-y-4 text-center'>
+                          <div className='border-primary mx-auto h-8 w-8 animate-spin rounded-full border-b-2'></div>
+                          <p className='text-muted-foreground text-sm'>{t('common.loading')}...</p>
+                        </div>
+                      </div>
+                    ) : hasResponseBody ? (
                       <div className='bg-muted/20 h-[500px] w-full overflow-auto rounded-lg border p-4'>
-                        <JsonViewer data={request.responseBody} rootName='' defaultExpanded={true} expandDepth={2} hideArrayIndices={true} className='text-sm' />
+                        <JsonViewer data={responseBody} rootName='' defaultExpanded={true} expandDepth={2} hideArrayIndices={true} className='text-sm' />
                       </div>
                     ) : request.status === 'processing' ? (
                       <div className='bg-muted/20 flex h-[500px] w-full items-center justify-center rounded-lg border'>

@@ -144,8 +144,6 @@ function buildRequestDetailQuery(permissions: { canViewApiKeys: boolean; canView
           contentSaved
           contentStorageKey
           requestHeaders
-          requestBody
-          responseBody
           status
           format
           metricsReasoningDurationMs
@@ -504,6 +502,72 @@ export function useRequestResponseChunks(
       }
     },
     enabled: enabled && !!requestID,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+const GET_REQUEST_BODY = `
+  query GetRequestBody($requestID: ID!) {
+    requestBody(requestID: $requestID)
+  }
+`;
+
+const GET_RESPONSE_BODY = `
+  query GetResponseBody($requestID: ID!) {
+    responseBody(requestID: $requestID)
+  }
+`;
+
+export function useRequestBody(
+  requestID: string,
+  options?: { projectId?: string | null; enabled?: boolean }
+) {
+  const { handleError } = useErrorHandler();
+  const { t } = useTranslation();
+  const selectedProjectId = useSelectedProjectId();
+  const projectId = options?.projectId !== undefined ? options.projectId : selectedProjectId;
+
+  return useQuery({
+    queryKey: ['request-body', requestID, projectId] as const,
+    queryFn: async () => {
+      try {
+        const headers = projectId ? { 'X-Project-ID': projectId } : undefined;
+        const data = await graphqlRequest<{ requestBody: any }>(GET_REQUEST_BODY, { requestID }, headers);
+        return data.requestBody;
+      } catch (error) {
+        handleError(error, t('common.errors.internalServerError'));
+        throw error;
+      }
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useResponseBody(
+  requestID: string,
+  options?: { projectId?: string | null; enabled?: boolean }
+) {
+  const { handleError } = useErrorHandler();
+  const { t } = useTranslation();
+  const selectedProjectId = useSelectedProjectId();
+  const projectId = options?.projectId !== undefined ? options.projectId : selectedProjectId;
+
+  return useQuery({
+    queryKey: ['response-body', requestID, projectId] as const,
+    queryFn: async () => {
+      try {
+        const headers = projectId ? { 'X-Project-ID': projectId } : undefined;
+        const data = await graphqlRequest<{ responseBody: any }>(GET_RESPONSE_BODY, { requestID }, headers);
+        return data.responseBody;
+      } catch (error) {
+        handleError(error, t('common.errors.internalServerError'));
+        throw error;
+      }
+    },
+    enabled: options?.enabled ?? true,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
