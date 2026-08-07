@@ -66,6 +66,8 @@ func (l *logger) LogEvent(event fxevent.Event) {
 }
 
 func startServer() {
+	fmt.Println("AxonHub starting...")
+
 	server.Run(
 		fx.StartTimeout(60*time.Second),
 		fx.StopTimeout(30*time.Second),
