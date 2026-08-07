@@ -130,6 +130,8 @@ dumps
 .gocache
 .reasonix
 MEMORY.md
+TODO.md
+analysis.md
 .codex
 
 config.yml
