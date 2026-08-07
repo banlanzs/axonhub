@@ -64,7 +64,7 @@ function buildRequestsQuery(permissions: { canViewApiKeys: boolean; canViewChann
             metricsLatencyMs
             metricsFirstTokenLatencyMs
             metricsReasoningDurationMs
-            executions(first: 10, orderBy: { field: CREATED_AT, direction: DESC }) {
+            executions(first: 3, orderBy: { field: CREATED_AT, direction: DESC }) {
               edges {
                 node {
                   modelID
@@ -323,6 +323,7 @@ export function useRequests(variables?: {
       }
     },
     enabled,
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
 }
