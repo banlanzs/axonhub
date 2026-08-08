@@ -216,6 +216,30 @@ func buildBaseRequest(chatReq *llm.Request, config *Config) *MessageRequest {
 		}
 	}
 
+	// DeepSeek needs an explicit thinking marker whenever reasoning stays on.
+	// Its Anthropic endpoint keys the "thinking mode" contract off the thinking
+	// field: with only output_config.effort present it still enables reasoning but
+	// then rejects the history with
+	// "The `content[].thinking` in the thinking mode must be passed back to the API."
+	// Adaptive is not accepted either (see supportsAdaptiveThinking), so normalize
+	// to type=enabled. budget_tokens is ignored by DeepSeek, but Anthropic's schema
+	// requires it to be positive, so keep the effort-derived budget.
+	if config != nil && config.Type == PlatformDeepSeek && !isThinkingDisabledRequest(chatReq) {
+		if req.Thinking == nil || req.Thinking.Type == "adaptive" {
+			effort := chatReq.ReasoningEffort
+			if req.OutputConfig != nil && req.OutputConfig.Effort != "" {
+				effort = req.OutputConfig.Effort
+			}
+
+			if effort != "" && effort != "none" {
+				req.Thinking = &Thinking{
+					Type:         "enabled",
+					BudgetTokens: getThinkingBudgetTokensWithConfig(effort, config),
+				}
+			}
+		}
+	}
+
 	// Restore Anthropic's top-level cache_control (automatic prompt caching).
 	// When present we keep it as-is on the upstream request and skip our own
 	// per-block breakpoint optimization (handled in TransformRequest).

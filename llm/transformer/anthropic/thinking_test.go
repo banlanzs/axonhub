@@ -759,7 +759,7 @@ func TestOutputConfig_Outbound(t *testing.T) {
 			},
 		},
 		{
-			name: "DeepSeek platform output_config_effort=max -> OutputConfig{Effort:max}",
+			name: "DeepSeek platform output_config_effort=max -> OutputConfig{Effort:max}, Thinking{enabled}",
 			chatReq: &llm.Request{
 				Model:     "deepseek-v4-pro",
 				MaxTokens: lo.ToPtr(int64(4096)),
@@ -780,8 +780,11 @@ func TestOutputConfig_Outbound(t *testing.T) {
 				t.Helper()
 				require.NotNil(t, anthropicReq.OutputConfig)
 				require.Equal(t, "max", anthropicReq.OutputConfig.Effort)
-				// DeepSeek supports output_config; Thinking is nil when no reasoning effort/budget is set
-				require.Nil(t, anthropicReq.Thinking)
+				// DeepSeek's Anthropic endpoint requires an explicit thinking marker
+				// alongside output_config.effort, otherwise it rejects the history with
+				// "The content[].thinking in the thinking mode must be passed back to the API."
+				require.NotNil(t, anthropicReq.Thinking)
+				require.Equal(t, "enabled", anthropicReq.Thinking.Type)
 			},
 		},
 		{
@@ -1505,7 +1508,7 @@ func TestDeepSeek_EnsureThinkingBlocksInAssistantMessages(t *testing.T) {
 			},
 		},
 		{
-			name: "metadata thinking_type=adaptive + DeepSeek -> no thinking, output_config used",
+			name: "metadata thinking_type=adaptive + DeepSeek -> Thinking enabled, output_config used",
 			chatReq: &llm.Request{
 				Model:     "deepseek-chat",
 				MaxTokens: lo.ToPtr(int64(4096)),
@@ -1525,15 +1528,19 @@ func TestDeepSeek_EnsureThinkingBlocksInAssistantMessages(t *testing.T) {
 			config: &Config{Type: PlatformDeepSeek},
 			validate: func(t *testing.T, anthropicReq *MessageRequest) {
 				t.Helper()
-				// DeepSeek does not support adaptive thinking; it should be omitted
-				// and output_config.effort used instead.
-				require.Nil(t, anthropicReq.Thinking)
+				// DeepSeek does not support adaptive thinking, so it is normalized to
+				// enabled (budget_tokens is ignored). An explicit thinking marker is
+				// required alongside output_config.effort, otherwise DeepSeek rejects
+				// the history with "content[].thinking in the thinking mode must be
+				// passed back to the API".
+				require.NotNil(t, anthropicReq.Thinking)
+				require.Equal(t, "enabled", anthropicReq.Thinking.Type)
 				require.NotNil(t, anthropicReq.OutputConfig)
 				require.Equal(t, "high", anthropicReq.OutputConfig.Effort)
 			},
 		},
 		{
-			name: "metadata thinking_type=adaptive + DeepSeek + output_config effort -> output_config preserved",
+			name: "metadata thinking_type=adaptive + DeepSeek + output_config effort -> Thinking enabled, output_config preserved",
 			chatReq: &llm.Request{
 				Model:     "deepseek-v4-flash",
 				MaxTokens: lo.ToPtr(int64(32000)),
@@ -1554,7 +1561,8 @@ func TestDeepSeek_EnsureThinkingBlocksInAssistantMessages(t *testing.T) {
 			config: &Config{Type: PlatformDeepSeek},
 			validate: func(t *testing.T, anthropicReq *MessageRequest) {
 				t.Helper()
-				require.Nil(t, anthropicReq.Thinking)
+				require.NotNil(t, anthropicReq.Thinking)
+				require.Equal(t, "enabled", anthropicReq.Thinking.Type)
 				require.NotNil(t, anthropicReq.OutputConfig)
 				require.Equal(t, "max", anthropicReq.OutputConfig.Effort)
 			},

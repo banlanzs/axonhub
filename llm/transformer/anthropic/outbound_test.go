@@ -221,7 +221,12 @@ func TestOutboundTransformer_TransformRequest_DeepSeekReasoningEffortUsesOutputC
 
 	require.NotNil(t, anthropicReq.OutputConfig)
 	require.Equal(t, "max", anthropicReq.OutputConfig.Effort)
-	require.Nil(t, anthropicReq.Thinking)
+	// DeepSeek must also receive an explicit thinking.type=enabled field: relying on
+	// output_config.effort alone leaves DeepSeek unable to tell the client intends
+	// thinking mode, and it then rejects assistant history for missing thinking blocks
+	// with "The content[].thinking ... must be passed back to the API."
+	require.NotNil(t, anthropicReq.Thinking)
+	require.Equal(t, "enabled", anthropicReq.Thinking.Type)
 }
 
 // TestOutboundTransformer_TransformRequest_ClaudeCodeToDeepSeekRelay reproduces the
@@ -266,8 +271,12 @@ func TestOutboundTransformer_TransformRequest_ClaudeCodeToDeepSeekRelay(t *testi
 	require.NoError(t, err)
 
 	// 1. PlatformClaudeCode must be promoted to PlatformDeepSeek for the model,
-	//    stripping thinking.type=adaptive (DeepSeek rejects it) in favor of output_config.
-	require.Nil(t, anthropicReq.Thinking, "adaptive thinking must be dropped for DeepSeek")
+	//    replacing thinking.type=adaptive (DeepSeek rejects "adaptive") with an explicit
+	//    thinking.type=enabled alongside output_config. DeepSeek needs the thinking field
+	//    present to recognize thinking mode is active; output_config.effort alone is not
+	//    enough and causes it to reject assistant history missing thinking blocks.
+	require.NotNil(t, anthropicReq.Thinking, "thinking must be enabled (not adaptive) for DeepSeek")
+	require.Equal(t, "enabled", anthropicReq.Thinking.Type)
 	require.NotNil(t, anthropicReq.OutputConfig, "output_config.effort must survive")
 	require.Equal(t, "xhigh", anthropicReq.OutputConfig.Effort)
 
