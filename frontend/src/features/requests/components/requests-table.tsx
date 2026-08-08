@@ -23,11 +23,10 @@ import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { ServerSidePagination } from '@/components/server-side-pagination';
 import { Request, RequestConnection } from '../data/schema';
 import { DataTableToolbar } from './data-table-toolbar';
-import { RequestBodyDrawer } from './request-body-drawer';
-import { DEFAULT_MOBILE_HIDDEN_COLUMN_IDS, useRequestsColumns } from './requests-columns';
+import { DEFAULT_HIDDEN_COLUMN_IDS, DEFAULT_MOBILE_HIDDEN_COLUMN_IDS, useRequestsColumns } from './requests-columns';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'requests-table-column-visibility';
-const COLUMN_VISIBILITY_STORAGE_VERSION = 2;
+const COLUMN_VISIBILITY_STORAGE_VERSION = 3;
 const COLUMN_ORDER_STORAGE_KEY = 'requests-table-column-order';
 const COLUMN_ORDER_STORAGE_VERSION = 1;
 
@@ -52,7 +51,6 @@ interface RequestsTableProps {
   apiKeyFilter: string[];
   modelIDFilter: string;
   dateRange?: DateTimeRangeValue;
-  queryWhere?: Record<string, any>;
   onNextPage: () => void;
   onPreviousPage: () => void;
   onPageSizeChange: (pageSize: number) => void;
@@ -96,7 +94,6 @@ export function RequestsTable({
   apiKeyFilter,
   modelIDFilter,
   dateRange,
-  queryWhere,
   onNextPage,
   onPreviousPage,
   onPageSizeChange,
@@ -111,17 +108,7 @@ export function RequestsTable({
 }: RequestsTableProps) {
   const { t } = useTranslation();
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerInitialRequestId, setDrawerInitialRequestId] = useState<string | null>(null);
-  const [drawerInitialIndex, setDrawerInitialIndex] = useState(0);
-
-  const handleBodyClick = useCallback((requestId: string, index: number) => {
-    setDrawerInitialRequestId(requestId);
-    setDrawerInitialIndex(index);
-    setDrawerOpen(true);
-  }, []);
-
-  const requestsColumns = useRequestsColumns({ onBodyClick: handleBodyClick, onViewDetail });
+  const requestsColumns = useRequestsColumns({ onViewDetail });
   const [sorting, setSorting] = useState<SortingState>([]);
   const isMobile = useIsMobile();
 
@@ -135,9 +122,10 @@ export function RequestsTable({
   // Hydrate column visibility from localStorage once viewport is known
   useEffect(() => {
     const isMobileInit = window.innerWidth < MOBILE_BREAKPOINT;
+    const desktopDefaults: VisibilityState = Object.fromEntries(DEFAULT_HIDDEN_COLUMN_IDS.map((id) => [id, false]));
     const mobileDefaults: VisibilityState = isMobileInit
-      ? Object.fromEntries(DEFAULT_MOBILE_HIDDEN_COLUMN_IDS.map((id) => [id, false]))
-      : {};
+      ? { ...desktopDefaults, ...Object.fromEntries(DEFAULT_MOBILE_HIDDEN_COLUMN_IDS.map((id) => [id, false])) }
+      : desktopDefaults;
 
     let overrides: VisibilityState = {};
     try {
@@ -148,18 +136,6 @@ export function RequestsTable({
           if ((parsed as { v?: number }).v === COLUMN_VISIBILITY_STORAGE_VERSION) {
             const stored = (parsed as { overrides?: VisibilityState }).overrides;
             if (stored && typeof stored === 'object') overrides = stored;
-          } else {
-            // Legacy unversioned payload: plain visibility map that may include
-            // responsive defaults from the old mobile persistence. Drop
-            // false-valued entries for mobile-hidden columns (they were injected
-            // defaults, not user intent); keep true entries (explicit user shows)
-            // and any entry for non-mobile-hidden columns.
-            const legacy = parsed as VisibilityState;
-            Object.entries(legacy).forEach(([id, visible]) => {
-              if (visible === true || !DEFAULT_MOBILE_HIDDEN_COLUMN_IDS.includes(id)) {
-                overrides[id] = visible;
-              }
-            });
           }
         }
       }
@@ -240,7 +216,7 @@ export function RequestsTable({
   useEffect(() => {
     if (!visibilityReady) return;
     setColumnVisibility((prev) => {
-      const hidden = DEFAULT_MOBILE_HIDDEN_COLUMN_IDS;
+      const hidden = DEFAULT_MOBILE_HIDDEN_COLUMN_IDS.filter((id) => !DEFAULT_HIDDEN_COLUMN_IDS.includes(id));
       const overrides = userOverridesRef.current;
       const next = { ...prev };
 
@@ -277,7 +253,7 @@ export function RequestsTable({
       filters.push({ id: 'channel', value: channelFilter });
     }
     if (apiKeyFilter.length > 0) {
-      filters.push({ id: 'apiKey', value: apiKeyFilter });
+      filters.push({ id: 'caller', value: apiKeyFilter });
     }
     if (modelIDFilter) {
       filters.push({ id: 'modelID', value: modelIDFilter });
@@ -293,7 +269,7 @@ export function RequestsTable({
         statusFilter: getFilterArrayValue(newFilters, 'status'),
         sourceFilter: getFilterArrayValue(newFilters, 'source'),
         channelFilter: getFilterArrayValue(newFilters, 'channel'),
-        apiKeyFilter: getFilterArrayValue(newFilters, 'apiKey'),
+        apiKeyFilter: getFilterArrayValue(newFilters, 'caller'),
         modelIDFilter: getFilterStringValue(newFilters, 'modelID'),
       });
     },
@@ -351,7 +327,7 @@ export function RequestsTable({
         autoRefresh={autoRefresh}
         onAutoRefreshChange={onAutoRefreshChange}
       />
-      <div className='shadow-soft relative mt-2 min-h-0 flex-1 overflow-auto rounded-2xl border border-[var(--table-border)] [scrollbar-gutter:stable] sm:mt-4'>
+      <div className='shadow-soft relative mt-2 flex-1 overflow-auto rounded-2xl border border-[var(--table-border)] sm:mt-4'>
         <div className='min-w-max'>
           <Table data-testid='requests-table' className='border-separate border-spacing-0 rounded-2xl bg-[var(--table-background)]'>
             <TableHeader className='sticky top-0 z-20 bg-[var(--table-header)] shadow-sm'>
@@ -373,7 +349,7 @@ export function RequestsTable({
             </TableHeader>
             <TableBody className='space-y-1 !bg-[var(--table-background)] p-2'>
               {loading ? (
-                <TableSkeleton rows={pageSize} columns={requestsColumns.length} />
+                <TableSkeleton rows={pageSize} columns={table.getVisibleLeafColumns().length} />
               ) : table.getRowModel().rows?.length ? (
                 <AnimatePresence initial={false} mode='popLayout'>
                   {table.getRowModel().rows.map((row) => (
@@ -427,17 +403,6 @@ export function RequestsTable({
           onPageSizeChange={onPageSizeChange}
         />
       </div>
-
-      <RequestBodyDrawer
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
-        initialRequestId={drawerInitialRequestId}
-        initialIndex={drawerInitialIndex}
-        initialRequests={data}
-        pageInfo={pageInfo}
-        queryWhere={queryWhere}
-        onViewDetail={onViewDetail}
-      />
     </div>
   );
 }
