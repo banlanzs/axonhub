@@ -162,8 +162,12 @@ func (t *OutboundTransformer) TransformRequest(
 		return nil, fmt.Errorf("%w: max_tokens must be positive", transformer.ErrInvalidRequest)
 	}
 
+	// Resolve effective platform: a generic Anthropic channel (Direct, Claude Code)
+	// proxying to a DeepSeek relay needs DeepSeek's stricter thinking rules.
+	effectiveConfig := resolveEffectivePlatform(llmReq, t.config)
+
 	// Convert to Anthropic request format
-	anthropicReq := convertToAnthropicRequestWithConfig(llmReq, t.config)
+	anthropicReq := convertToAnthropicRequestWithConfig(llmReq, effectiveConfig)
 
 	// Anthropic supports two prompt-caching modes (see
 	// https://docs.claude.com/en/docs/build-with-claude/prompt-caching):

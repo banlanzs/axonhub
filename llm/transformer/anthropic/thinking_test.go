@@ -802,7 +802,7 @@ func TestOutputConfig_Outbound(t *testing.T) {
 			},
 		},
 		{
-			name: "DeepSeek with ReasoningEffort=none -> no OutputConfig, Thinking disabled",
+			name: "DeepSeek with ReasoningEffort=none -> no OutputConfig, omit thinking field",
 			chatReq: &llm.Request{
 				Model:     "deepseek-v4-pro",
 				MaxTokens: lo.ToPtr(int64(4096)),
@@ -821,9 +821,9 @@ func TestOutputConfig_Outbound(t *testing.T) {
 				t.Helper()
 				// "none" is not a valid output_config.effort value, so OutputConfig should be nil
 				require.Nil(t, anthropicReq.OutputConfig)
-				// Thinking should be disabled instead
-				require.NotNil(t, anthropicReq.Thinking)
-				require.Equal(t, "disabled", anthropicReq.Thinking.Type)
+				// DeepSeek omits the thinking field entirely on disabled (avoids relay
+				// translating the disabled marker into reasoning_effort="none").
+				require.Nil(t, anthropicReq.Thinking)
 			},
 		},
 	}

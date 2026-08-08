@@ -7,11 +7,26 @@
     },
     {
       "role": "assistant",
-      "content": "I'll help you with both requests. Let me start by getting the current weather in New York and then calculate 15 * 23."
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "\n",
+          "signature": "\n"
+        },
+        {
+          "type": "text",
+          "text": "I'll help you with both requests. Let me start by getting the current weather in New York and then calculate 15 * 23."
+        }
+      ]
     },
     {
       "role": "assistant",
       "content": [
+        {
+          "type": "thinking",
+          "thinking": "\n",
+          "signature": "\n"
+        },
         {
           "type": "tool_use",
           "id": "call_00_zGAg9J4lHVXcLl9roRtdhSbX",
@@ -35,6 +50,11 @@
     {
       "role": "assistant",
       "content": [
+        {
+          "type": "thinking",
+          "thinking": "\n",
+          "signature": "\n"
+        },
         {
           "type": "tool_use",
           "id": "call_01_5h8bOXbWCn7AKol8Ym26apVx",

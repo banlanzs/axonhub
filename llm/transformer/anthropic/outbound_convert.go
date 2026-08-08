@@ -16,15 +16,20 @@ func convertToAnthropicRequest(chatReq *llm.Request) *MessageRequest {
 }
 
 func convertToAnthropicRequestWithConfig(chatReq *llm.Request, config *Config) *MessageRequest {
-	req := buildBaseRequest(chatReq, config)
-	req.Tools = convertToolsAnthropic(chatReq.Tools, config)
+	effectiveConfig := resolveEffectivePlatform(chatReq, config)
+
+	req := buildBaseRequest(chatReq, effectiveConfig)
+	req.Tools = convertToolsAnthropic(chatReq.Tools, effectiveConfig)
 	req.ToolChoice = convertToolChoiceToAnthropic(chatReq.ToolChoice)
-	req.Messages = convertMessages(chatReq, config)
+	req.Messages = convertMessages(chatReq, effectiveConfig)
 	req.StopSequences = convertStopSequences(chatReq.Stop)
 
 	// DeepSeek requires assistant messages in history to include a thinking block
 	// when thinking is enabled (matching their OpenAI API behavior).
-	if config != nil && config.Type == PlatformDeepSeek && isThinkingEnabled(req) {
+	// We use the disabled intent from the original request (metadata or reasoning_effort=none)
+	// because when thinking is disabled for DeepSeek we omit the thinking field entirely,
+	// which would make isThinkingEnabled(req) incorrectly return true.
+	if effectiveConfig != nil && effectiveConfig.Type == PlatformDeepSeek && !isThinkingDisabledRequest(chatReq) {
 		ensureAssistantThinkingBlocks(req.Messages)
 	}
 
@@ -33,6 +38,23 @@ func convertToAnthropicRequestWithConfig(chatReq *llm.Request, config *Config) *
 
 func isThinkingEnabled(req *MessageRequest) bool {
 	return req.Thinking == nil || req.Thinking.Type != "disabled"
+}
+
+// isThinkingDisabledRequest reports whether the client explicitly disabled thinking.
+// The outbound MessageRequest may carry a nil Thinking for DeepSeek (the field is
+// omitted entirely), so the disabled intent must be read from the request itself.
+func isThinkingDisabledRequest(chatReq *llm.Request) bool {
+	if chatReq.ReasoningEffort == "none" {
+		return true
+	}
+
+	if chatReq.TransformerMetadata != nil {
+		if v, ok := chatReq.TransformerMetadata[TransformerMetadataKeyThinkingType].(string); ok && v == "disabled" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func ensureAssistantThinkingBlocks(messages []MessageParam) {
@@ -130,7 +152,9 @@ func buildBaseRequest(chatReq *llm.Request, config *Config) *MessageRequest {
 	// is present, prefer output_config over thinking so suffix-based effort routing
 	// (for example deepseek-chat-max) preserves the explicit effort level.
 	// Note: "none" is not a valid effort value, so skip it (it means disabled thinking).
-	if config != nil && config.Type == PlatformDeepSeek && chatReq.ReasoningEffort != "" && chatReq.ReasoningEffort != "none" {
+	// Also skip when the request explicitly disabled thinking (metadata or reasoning_effort=none)
+	// to avoid emitting effort for DeepSeek relays that would otherwise misinterpret it.
+	if config != nil && config.Type == PlatformDeepSeek && chatReq.ReasoningEffort != "" && chatReq.ReasoningEffort != "none" && !isThinkingDisabledRequest(chatReq) {
 		req.OutputConfig = &OutputConfig{Effort: chatReq.ReasoningEffort}
 	}
 
@@ -139,7 +163,13 @@ func buildBaseRequest(chatReq *llm.Request, config *Config) *MessageRequest {
 		if v, ok := chatReq.TransformerMetadata[TransformerMetadataKeyThinkingType].(string); ok {
 			switch v {
 			case "disabled":
-				req.Thinking = &Thinking{Type: "disabled"}
+				// For DeepSeek, omit the thinking field entirely instead of sending
+				// thinking.type=disabled. Some third-party relays translate the
+				// disabled marker into OpenAI reasoning_effort="none", which DeepSeek
+				// rejects with a 400 enumeration error.
+				if config == nil || config.Type != PlatformDeepSeek {
+					req.Thinking = &Thinking{Type: "disabled"}
+				}
 			case "adaptive":
 				if supportsAdaptiveThinking(config) {
 					req.Thinking = &Thinking{Type: "adaptive"}
@@ -152,8 +182,11 @@ func buildBaseRequest(chatReq *llm.Request, config *Config) *MessageRequest {
 
 	// Handle ReasoningEffort="none" as disabled thinking (e.g., from OpenAI inbound)
 	// This check is needed when TransformerMetadata is not set but ReasoningEffort is "none"
+	// For DeepSeek, omit the field entirely (same rationale as above).
 	if req.Thinking == nil && chatReq.ReasoningEffort == "none" {
-		req.Thinking = &Thinking{Type: "disabled"}
+		if config == nil || config.Type != PlatformDeepSeek {
+			req.Thinking = &Thinking{Type: "disabled"}
+		}
 	}
 
 	if req.OutputConfig == nil && req.Thinking == nil && chatReq.ReasoningEffort != "none" && (chatReq.ReasoningEffort != "" || chatReq.ReasoningBudget != nil) {

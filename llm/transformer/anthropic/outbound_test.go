@@ -224,6 +224,106 @@ func TestOutboundTransformer_TransformRequest_DeepSeekReasoningEffortUsesOutputC
 	require.Nil(t, anthropicReq.Thinking)
 }
 
+// TestOutboundTransformer_TransformRequest_ClaudeCodeToDeepSeekRelay reproduces the
+// request-log/2.json failure: a Claude Code channel (PlatformClaudeCode) proxying to a
+// DeepSeek relay. The channel type alone cannot reveal the upstream, so promotion to
+// PlatformDeepSeek must be driven by the model name. Thinking must be enabled and every
+// assistant message must carry a signed thinking block before reaching DeepSeek.
+func TestOutboundTransformer_TransformRequest_ClaudeCodeToDeepSeekRelay(t *testing.T) {
+	transformer, err := NewOutboundTransformerWithConfig(&Config{
+		Type:           PlatformClaudeCode,
+		BaseURL:        "https://new-api.abrdns.com",
+		APIKeyProvider: auth.NewStaticKeyProvider("test-api-key"),
+	})
+	require.NoError(t, err)
+
+	// llm.Request shape inferred from the 2.json inbound: thinking enabled (adaptive),
+	// output_config.effort=max, several assistant messages without any thinking block.
+	req := &llm.Request{
+		Model:     "deepseek-v4-pro",
+		MaxTokens: lo.ToPtr(int64(64000)),
+		Stream:    lo.ToPtr(true),
+		TransformerMetadata: map[string]any{
+			TransformerMetadataKeyThinkingType: "adaptive",
+		},
+		ReasoningEffort: "xhigh",
+		Messages: []llm.Message{
+			{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("Hello")}},
+			{
+				Role:    "assistant",
+				Content: llm.MessageContent{Content: lo.ToPtr("No thinking block here")},
+			},
+			{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("Next")}},
+		},
+	}
+
+	result, err := transformer.TransformRequest(t.Context(), req)
+	require.NoError(t, err)
+
+	var anthropicReq MessageRequest
+
+	err = json.Unmarshal(result.Body, &anthropicReq)
+	require.NoError(t, err)
+
+	// 1. PlatformClaudeCode must be promoted to PlatformDeepSeek for the model,
+	//    stripping thinking.type=adaptive (DeepSeek rejects it) in favor of output_config.
+	require.Nil(t, anthropicReq.Thinking, "adaptive thinking must be dropped for DeepSeek")
+	require.NotNil(t, anthropicReq.OutputConfig, "output_config.effort must survive")
+	require.Equal(t, "xhigh", anthropicReq.OutputConfig.Effort)
+
+	// 2. The assistant message lacking a thinking block must get one injected with a
+	//    non-empty signature, otherwise DeepSeek returns
+	//    "The content[].thinking ... must be passed back to the API."
+	assistantMsg := anthropicReq.Messages[1]
+	require.Equal(t, "assistant", assistantMsg.Role)
+	require.NotNil(t, assistantMsg.Content.MultipleContent)
+	thinkingBlock := assistantMsg.Content.MultipleContent[0]
+	require.Equal(t, "thinking", thinkingBlock.Type)
+	require.NotNil(t, thinkingBlock.Signature)
+	require.NotEmpty(t, *thinkingBlock.Signature)
+}
+
+func TestOutboundTransformer_TransformRequest_ClaudeCodeToDeepSeekRelay_Disabled(t *testing.T) {
+	transformer, err := NewOutboundTransformerWithConfig(&Config{
+		Type:           PlatformClaudeCode,
+		BaseURL:        "https://new-api.abrdns.com",
+		APIKeyProvider: auth.NewStaticKeyProvider("test-api-key"),
+	})
+	require.NoError(t, err)
+
+	// Disabled thinking on a deepseek model via claude-code channel: the thinking
+	// field must be omitted entirely (not sent as thinking.type=disabled) so the
+	// relay does not translate it into reasoning_effort="none" (400 error).
+	req := &llm.Request{
+		Model:     "deepseek-v4-pro",
+		MaxTokens: lo.ToPtr(int64(64000)),
+		Stream:    lo.ToPtr(true),
+		TransformerMetadata: map[string]any{
+			TransformerMetadataKeyThinkingType: "disabled",
+		},
+		ReasoningEffort: "none",
+		Messages: []llm.Message{
+			{Role: "user", Content: llm.MessageContent{Content: lo.ToPtr("Hello")}},
+		},
+	}
+
+	result, err := transformer.TransformRequest(t.Context(), req)
+	require.NoError(t, err)
+
+	var anthropicReq MessageRequest
+	err = json.Unmarshal(result.Body, &anthropicReq)
+	require.NoError(t, err)
+
+	// 1. Thinking must be nil (omitted), not {Type: "disabled"}
+	require.Nil(t, anthropicReq.Thinking, "thinking field must be omitted for DeepSeek relay")
+
+	// 2. OutputConfig must also be nil (no effort for disabled)
+	require.Nil(t, anthropicReq.OutputConfig, "output_config must be nil when thinking is disabled")
+
+	// 3. No assistant thinking blocks should be injected (disabled means no thinking)
+	require.Len(t, anthropicReq.Messages, 1)
+}
+
 func TestOutboundTransformer_TransformResponse(t *testing.T) {
 	transformer, _ := NewOutboundTransformer("", "")
 
