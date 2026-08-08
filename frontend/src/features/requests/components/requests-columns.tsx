@@ -139,11 +139,8 @@ PassThroughCell.displayName = 'PassThroughCell';
 const ReasoningEffortCell = memo(function ReasoningEffortCell({ row }: { row: Row<Request> }) {
   const { t } = useTranslation();
   const latestExecution = row.original.executions?.edges?.[0]?.node;
-  const reasoningEffort = latestExecution
-    ? latestExecution.reasoningEffort
-    : row.original.status === 'processing'
-      ? undefined
-      : row.original.reasoningEffort;
+  const reasoningEffort = latestExecution?.reasoningEffort
+    || (row.original.status !== 'processing' ? row.original.reasoningEffort : undefined);
 
   if (!reasoningEffort) {
     return <div className='text-muted-foreground text-xs'>-</div>;
