@@ -16,6 +16,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import type { DateTimeRangeValue } from '@/utils/date-range';
+import type { AutoRefreshInterval } from '@/hooks/use-auto-refresh-interval';
 import { useIsMobile, MOBILE_BREAKPOINT } from '@/hooks/use-mobile';
 import { useAnimatedList } from '@/hooks/useAnimatedList';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -23,10 +24,11 @@ import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { ServerSidePagination } from '@/components/server-side-pagination';
 import { Request, RequestConnection } from '../data/schema';
 import { DataTableToolbar } from './data-table-toolbar';
+import { RequestBodyDrawer } from './request-body-drawer';
 import { DEFAULT_HIDDEN_COLUMN_IDS, DEFAULT_MOBILE_HIDDEN_COLUMN_IDS, useRequestsColumns } from './requests-columns';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'requests-table-column-visibility';
-const COLUMN_VISIBILITY_STORAGE_VERSION = 3;
+const COLUMN_VISIBILITY_STORAGE_VERSION = 6;
 const COLUMN_ORDER_STORAGE_KEY = 'requests-table-column-order';
 const COLUMN_ORDER_STORAGE_VERSION = 1;
 
@@ -51,6 +53,7 @@ interface RequestsTableProps {
   apiKeyFilter: string[];
   modelIDFilter: string;
   dateRange?: DateTimeRangeValue;
+  queryWhere?: Record<string, any>;
   onNextPage: () => void;
   onPreviousPage: () => void;
   onPageSizeChange: (pageSize: number) => void;
@@ -60,8 +63,9 @@ interface RequestsTableProps {
   onViewDetail: (requestId: string) => void;
   onRefresh: () => void;
   showRefresh: boolean;
-  autoRefresh?: boolean;
-  onAutoRefreshChange?: (enabled: boolean) => void;
+  autoRefreshInterval?: AutoRefreshInterval;
+  autoRefreshResumeKey?: number;
+  onAutoRefreshIntervalChange?: (interval: AutoRefreshInterval) => void;
 }
 
 export interface RequestTableFilters {
@@ -94,6 +98,7 @@ export function RequestsTable({
   apiKeyFilter,
   modelIDFilter,
   dateRange,
+  queryWhere,
   onNextPage,
   onPreviousPage,
   onPageSizeChange,
@@ -103,12 +108,23 @@ export function RequestsTable({
   onViewDetail,
   onRefresh,
   showRefresh,
-  autoRefresh = false,
-  onAutoRefreshChange,
+  autoRefreshInterval = null,
+  autoRefreshResumeKey = 0,
+  onAutoRefreshIntervalChange,
 }: RequestsTableProps) {
   const { t } = useTranslation();
 
-  const requestsColumns = useRequestsColumns({ onViewDetail });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerInitialRequestId, setDrawerInitialRequestId] = useState<string | null>(null);
+  const [drawerInitialIndex, setDrawerInitialIndex] = useState(0);
+
+  const handleBodyClick = useCallback((requestId: string, index: number) => {
+    setDrawerInitialRequestId(requestId);
+    setDrawerInitialIndex(index);
+    setDrawerOpen(true);
+  }, []);
+
+  const requestsColumns = useRequestsColumns({ onBodyClick: handleBodyClick, onViewDetail });
   const [sorting, setSorting] = useState<SortingState>([]);
   const isMobile = useIsMobile();
 
@@ -239,7 +255,11 @@ export function RequestsTable({
     });
   }, [isMobile, visibilityReady]);
 
-  const displayedData = useAnimatedList(data, autoRefresh, pageSize);
+  const animationResetKey = useMemo(
+    () => JSON.stringify({ queryWhere: queryWhere ?? null, autoRefreshResumeKey }),
+    [queryWhere, autoRefreshResumeKey]
+  );
+  const displayedData = useAnimatedList(data, autoRefreshInterval !== null, pageSize, animationResetKey);
 
   const columnFilters = useMemo<ColumnFiltersState>(() => {
     const filters: ColumnFiltersState = [];
@@ -324,8 +344,8 @@ export function RequestsTable({
         onResetFilters={onResetFilters}
         onRefresh={onRefresh}
         showRefresh={showRefresh}
-        autoRefresh={autoRefresh}
-        onAutoRefreshChange={onAutoRefreshChange}
+        autoRefreshInterval={autoRefreshInterval}
+        onAutoRefreshIntervalChange={onAutoRefreshIntervalChange}
       />
       <div className='shadow-soft relative mt-2 flex-1 overflow-auto rounded-2xl border border-[var(--table-border)] sm:mt-4'>
         <div className='min-w-max'>
@@ -403,6 +423,17 @@ export function RequestsTable({
           onPageSizeChange={onPageSizeChange}
         />
       </div>
+
+      <RequestBodyDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        initialRequestId={drawerInitialRequestId}
+        initialIndex={drawerInitialIndex}
+        initialRequests={data}
+        pageInfo={pageInfo}
+        queryWhere={queryWhere}
+        onViewDetail={onViewDetail}
+      />
     </div>
   );
 }
