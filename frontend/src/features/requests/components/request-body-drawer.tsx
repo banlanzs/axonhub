@@ -25,7 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { JsonViewer } from '@/components/json-tree-view';
 import { useRequestPermissions } from '../../../hooks/useRequestPermissions';
-import { useRequest, fetchAdjacentRequestPage } from '../data';
+import { useRequest, useRequestBody, useResponseBody, fetchAdjacentRequestPage } from '../data';
 import { Request, RequestConnection } from '../data/schema';
 import { CurlPreviewDialog } from './curl-preview-dialog';
 import { RequestConversationViewer } from './request-conversation-viewer';
@@ -135,17 +135,27 @@ export function RequestBodyDrawer({
   const [activeTab, setActiveTab] = useState('request');
   const [requestBodyView, setRequestBodyView] = useState<'conversation' | 'json'>('conversation');
 
+  // Lazy-load heavy body fields separately from the metadata query.
+  const { data: requestBody, isLoading: isRequestBodyLoading } = useRequestBody(currentRequestId ?? '', {
+    projectId: effectiveProjectId,
+    enabled: open && canRenderBody && !!currentRequestId && activeTab === 'request',
+  });
+  const { data: responseBody, isLoading: isResponseBodyLoading } = useResponseBody(currentRequestId ?? '', {
+    projectId: effectiveProjectId,
+    enabled: open && canRenderBody && !!currentRequestId,
+  });
+
   // Use the conversation view only when the body actually parses as a conversation.
   // Only auto-adjust when the underlying request body changes, so manual toggles stick.
   const lastAutoBodyRef = useRef<string>('');
   useEffect(() => {
-    if (!displayedRequest) return;
-    const bodyKey = JSON.stringify({ id: displayedRequest?.id, body: displayedRequest?.requestBody, format: displayedRequest?.format });
+    if (!requestBody) return;
+    const bodyKey = JSON.stringify({ id: currentRequestId, body: requestBody, format: displayedRequest?.format });
     if (bodyKey === lastAutoBodyRef.current) return;
     lastAutoBodyRef.current = bodyKey;
-    const isConversation = !!parseRequestConversation(displayedRequest.requestBody, displayedRequest.format);
+    const isConversation = !!parseRequestConversation(requestBody, displayedRequest?.format);
     setRequestBodyView(isConversation ? 'conversation' : 'json');
-  }, [displayedRequest?.id, displayedRequest?.requestBody, displayedRequest?.format]);
+  }, [currentRequestId, requestBody, displayedRequest?.format]);
 
   // ── copy / curl ───────────────────────────────────────────────────────────
   const [showCurlPreview, setShowCurlPreview] = useState(false);
@@ -165,10 +175,10 @@ export function RequestBodyDrawer({
 
   const handleCurlPreview = useCallback(() => {
     if (!displayedRequest) return;
-    const curl = generateRequestCurl(displayedRequest.requestHeaders, displayedRequest.requestBody, displayedRequest.format as any);
+    const curl = generateRequestCurl(displayedRequest.requestHeaders, requestBody, displayedRequest.format as any);
     setCurlCommand(curl);
     setShowCurlPreview(true);
-  }, [displayedRequest]);
+  }, [displayedRequest, requestBody]);
 
   // List-level data (always available, no loading flash).
   const listRequest = visibleRequests[visibleCurrentIndex];
@@ -355,7 +365,7 @@ export function RequestBodyDrawer({
                     size='icon'
                     className='h-9 w-9 flex-shrink-0'
                     onClick={() =>
-                      copyBody(activeTab === 'request' ? displayedRequest.requestBody : displayedRequest.responseBody)
+                      copyBody(activeTab === 'request' ? requestBody : responseBody)
                     }
                     title={t('requests.actions.copy')}
                   >
@@ -399,8 +409,12 @@ export function RequestBodyDrawer({
                   </div>
                   {requestBodyView === 'conversation' ? (
                     <ScrollArea className='bg-muted/20 h-full w-full rounded-lg border p-4'>
-                      {displayedRequest.requestBody ? (
-                        <RequestConversationViewer body={displayedRequest.requestBody} format={displayedRequest.format} />
+                      {isRequestBodyLoading ? (
+                        <div className='flex h-full items-center justify-center'>
+                          <div className='border-primary h-6 w-6 animate-spin rounded-full border-b-2'></div>
+                        </div>
+                      ) : requestBody ? (
+                        <RequestConversationViewer body={requestBody} format={displayedRequest.format} />
                       ) : (
                         <div className='flex h-32 items-center justify-center'>
                           <p className='text-muted-foreground text-sm'>{t('requests.drawer.noRequestBody')}</p>
@@ -409,10 +423,14 @@ export function RequestBodyDrawer({
                     </ScrollArea>
                   ) : (
                     <ScrollArea className='bg-muted/20 h-full w-full rounded-lg border p-4'>
-                      {displayedRequest.requestBody ? (
+                      {isRequestBodyLoading ? (
+                        <div className='flex h-full items-center justify-center'>
+                          <div className='border-primary h-6 w-6 animate-spin rounded-full border-b-2'></div>
+                        </div>
+                      ) : requestBody ? (
                         <JsonViewer
                           key={`req-${currentRequestId}`}
-                          data={displayedRequest.requestBody}
+                          data={requestBody}
                           rootName=''
                           defaultExpanded={true}
                           expandDepth='all'
@@ -431,10 +449,14 @@ export function RequestBodyDrawer({
 
                 <TabsContent value='response' className='m-0 min-h-0 flex-1 px-6 pb-6 pt-4'>
                   <ScrollArea className='bg-muted/20 h-full w-full rounded-lg border p-4'>
-                    {displayedRequest.responseBody ? (
+                    {isResponseBodyLoading ? (
+                      <div className='flex h-full items-center justify-center'>
+                        <div className='border-primary h-6 w-6 animate-spin rounded-full border-b-2'></div>
+                      </div>
+                    ) : responseBody ? (
                       <JsonViewer
                         key={`res-${currentRequestId}`}
-                        data={displayedRequest.responseBody}
+                        data={responseBody}
                         rootName=''
                         defaultExpanded={true}
                         expandDepth={2}
