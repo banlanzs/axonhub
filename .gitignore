@@ -176,3 +176,4 @@ config.schema.json
 .ace-tool/
 .omx/
 request-log/
+deploy_dev.sh

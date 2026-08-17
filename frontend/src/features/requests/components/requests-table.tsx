@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   ColumnFiltersState,
+  ColumnOrderState,
   RowData,
   SortingState,
   VisibilityState,
@@ -26,9 +27,11 @@ import { Request, RequestConnection } from '../data/schema';
 import { DataTableToolbar } from './data-table-toolbar';
 import { RequestBodyDrawer } from './request-body-drawer';
 import { DEFAULT_HIDDEN_COLUMN_IDS, DEFAULT_MOBILE_HIDDEN_COLUMN_IDS, useRequestsColumns } from './requests-columns';
+import { readColumnOrder, writeColumnOrder, reconcileColumnOrder, isReorderableColumn } from '@/lib/column-order';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'requests-table-column-visibility';
 const COLUMN_VISIBILITY_STORAGE_VERSION = 6;
+
 const COLUMN_ORDER_STORAGE_KEY = 'requests-table-column-order';
 const COLUMN_ORDER_STORAGE_VERSION = 1;
 
@@ -132,8 +135,6 @@ export function RequestsTable({
   const userOverridesRef = useRef<VisibilityState>({});
   const columnVisibilityRef = useRef<VisibilityState>({});
   const [visibilityReady, setVisibilityReady] = useState(false);
-  const [columnOrder, setColumnOrder] = useState<string[]>([]);
-  const [orderReady, setOrderReady] = useState(false);
 
   // Hydrate column visibility from localStorage once viewport is known
   useEffect(() => {
@@ -163,51 +164,6 @@ export function RequestsTable({
     setColumnVisibility({ ...mobileDefaults, ...overrides });
     setVisibilityReady(true);
   }, []); // Run once on mount
-
-  // Hydrate column order from localStorage once (must run after columns are defined)
-  useEffect(() => {
-    let storedOrder: string[] = [];
-    try {
-      const raw = localStorage.getItem(COLUMN_ORDER_STORAGE_KEY);
-      if (raw) {
-        const parsed: unknown = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          if ((parsed as { v?: number }).v === COLUMN_ORDER_STORAGE_VERSION) {
-            const order = (parsed as { order?: unknown }).order;
-            if (Array.isArray(order)) storedOrder = order.filter((id): id is string => typeof id === 'string');
-          }
-        }
-      }
-    } catch {
-      // localStorage unavailable or corrupt — keep defaults
-    }
-
-    if (storedOrder.length > 0) {
-      // Keep only columns that still exist; append any new columns (e.g. newly
-      // added after a permission change) at the end in definition order.
-      const definedIds = requestsColumns.map((col) => col.id ?? col.accessorKey ?? '');
-      const existing = storedOrder.filter((id) => definedIds.includes(id));
-      const rest = definedIds.filter((id) => !existing.includes(id));
-      setColumnOrder([...existing, ...rest]);
-    } else {
-      setColumnOrder(requestsColumns.map((col) => col.id ?? col.accessorKey ?? ''));
-    }
-    setOrderReady(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount
-
-  // Persist column order
-  useEffect(() => {
-    if (!orderReady || columnOrder.length === 0) return;
-    try {
-      localStorage.setItem(
-        COLUMN_ORDER_STORAGE_KEY,
-        JSON.stringify({ v: COLUMN_ORDER_STORAGE_VERSION, order: columnOrder })
-      );
-    } catch {
-      // localStorage unavailable or quota exceeded — skip persistence
-    }
-  }, [columnOrder, orderReady]);
 
   // Mirror columnVisibility into a ref so the visibility-change handler can read prev without a closure
   useEffect(() => {
@@ -254,6 +210,37 @@ export function RequestsTable({
       return next;
     });
   }, [isMobile, visibilityReady]);
+
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([]);
+  const columnOrderRef = useRef<ColumnOrderState>([]);
+
+  // Hydrate column order from localStorage once table is mounted
+  useEffect(() => {
+    const allIds = table.getAllLeafColumns().map((c) => c.id);
+    const reorderable = allIds.filter((id) => {
+      const col = table.getColumn(id);
+      return col ? isReorderableColumn(col) : false;
+    });
+    const stored = readColumnOrder(COLUMN_ORDER_STORAGE_KEY, COLUMN_ORDER_STORAGE_VERSION);
+    setColumnOrder(
+      reconcileColumnOrder({
+        allColumnIds: allIds,
+        reorderableColumnIds: reorderable,
+        storedOrder: stored,
+        pinnedLast: ['details'],
+      }),
+    );
+  }, []);
+
+  useEffect(() => {
+    columnOrderRef.current = columnOrder;
+  }, [columnOrder]);
+
+  const handleColumnOrderChange = useCallback((updater: Updater<ColumnOrderState>) => {
+    const next = typeof updater === 'function' ? updater(columnOrderRef.current) : updater;
+    setColumnOrder(next);
+    writeColumnOrder(COLUMN_ORDER_STORAGE_KEY, COLUMN_ORDER_STORAGE_VERSION, next);
+  }, []);
 
   const animationResetKey = useMemo(
     () => JSON.stringify({ queryWhere: queryWhere ?? null, autoRefreshResumeKey }),
@@ -322,9 +309,9 @@ export function RequestsTable({
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
-    onColumnOrderChange: setColumnOrder,
     onColumnFiltersChange: handleColumnFiltersChange,
     onColumnVisibilityChange: handleColumnVisibilityChange,
+    onColumnOrderChange: handleColumnOrderChange,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -346,6 +333,8 @@ export function RequestsTable({
         showRefresh={showRefresh}
         autoRefreshInterval={autoRefreshInterval}
         onAutoRefreshIntervalChange={onAutoRefreshIntervalChange}
+        enableColumnOrdering
+        getColumnLabel={(id) => t(`requests.columns.${id}`, { defaultValue: id })}
       />
       <div className='shadow-soft relative mt-2 flex-1 overflow-auto rounded-2xl border border-[var(--table-border)] sm:mt-4'>
         <div className='min-w-max'>
