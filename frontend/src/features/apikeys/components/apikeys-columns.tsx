@@ -4,7 +4,7 @@ import { memo } from 'react';
 import { Copy, Eye, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { extractNumberID } from '@/lib/utils';
+import { cn, extractNumberID } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DataTableColumnHeader } from '@/components/data-table-column-header';
